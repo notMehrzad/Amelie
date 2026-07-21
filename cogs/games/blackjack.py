@@ -1,46 +1,82 @@
+"""blackjack command.
+
+Implements all game logic with interacting buttons in discord.
+"""
+
+from __future__ import annotations
+
+__all__ = []
+
 import asyncio
+import contextlib
 import random
+from typing import ClassVar, final, override
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 
-from cogs.utility.help import HelpData
-from core.database import Session, execute, fetchone
-from core.dbconstants import AccountTable
+from core.bank import BankAccount, get_bank_account
+from core.help import HelpData
 from core.log_handler import logger_setup
+from core.session import Session, get_session
+
+MAX_BET = 300
+MIN_BET = 100
+
+# Game logic constants
+BLACKJACK_CARD_NUMBER = 2
+BLACKJACK_SCORE = 21
+DEALER_STAND_VALUE = 16
+
+BLACKJACK_EMBED_TITLE = "Blackjack 🖤"
+
 
 logger = logger_setup(__name__)
 
-betLimit = (100, 300)
 
-
+@final
 class Card:
-    def __init__(self, rank: int | str, suit: str):
-        ranks = (2, 3, 4, 5, 6, 7, 8, 9, 10, "J", "Q", "K", "A")
-        suits = ("H", "C", "D", "S")
-        symbols = {"H": "♥️", "C": "♣️", "D": "♦️", "S": "♠️"}
-        if rank not in ranks or suit not in suits:
+    """Represents a card from the standard 52-card deck."""
+
+    RANKS = (2, 3, 4, 5, 6, 7, 8, 9, 10, "J", "Q", "K", "A")
+    SUITS = ("H", "C", "D", "S")
+    SYMBOLS: ClassVar = {"H": "♥️", "C": "♣️", "D": "♦️", "S": "♠️"}
+
+    def __init__(self, rank: int | str, suit: str) -> None:
+        """Initialize a card."""
+        if rank not in Card.RANKS or suit not in Card.SUITS:
             raise ValueError
 
         self.rank = rank
         self.suit = suit
-        self.symbol = symbols[suit]
+        self.symbol = Card.SYMBOLS[suit]
 
 
-class BjHand:
-    def __init__(self, card: list[Card], dealers: bool = False):
-        self.cards = card
-        self.holeCard = True if dealers else False
+class BlackjackHand:
+    """Represents a Blackjack hand."""
 
-    def isBlackjack(self):
-        return True if len(self.cards) == 2 and self.value == 21 else False
-
-    def isBusted(self):
-        return True if self.value > 21 else False
+    def __init__(self, initial_card: list[Card]) -> None:
+        """Initialize a Blackjack hand."""
+        self.cards: list[Card] = initial_card
+        # Hole card is initially hidden if it's dealer's hand.
+        self.hide_hole_card: bool | None = None
 
     @property
-    def value(self):
+    def is_blackjack(self) -> bool:
+        """Determine if the hand is Blackjack."""
+        return bool(
+            len(self.cards) == BLACKJACK_CARD_NUMBER and self.value == BLACKJACK_SCORE,
+        )
+
+    @property
+    def is_busted(self) -> bool:
+        """Determine if the hand is busted."""
+        return self.value > BLACKJACK_SCORE
+
+    @property
+    def value(self) -> int:
+        """Determine the value of the hand."""
         value = 0
         aces = 0
         for card in self.cards:
@@ -52,823 +88,1001 @@ class BjHand:
             else:
                 value += int(card.rank)
 
-        while value > 21 and aces > 0:
+        while value > BLACKJACK_SCORE and aces > 0:
             value -= 10
             aces -= 1
 
         return value
 
-    def addCard(self, card: Card):
-        self.cards.append(card)
-        self.holeCard = False
-
-    def __str__(self):
-        if not self.holeCard:
+    @override
+    def __str__(self) -> str:
+        """Return a formatted string of cards in the hand for display."""
+        # Show all cards if hole card is not hidden.
+        if not self.hide_hole_card:
             return "   ".join(f"{card.rank}{card.symbol}" for card in self.cards)
-        else:
-            return f"{self.cards[0].rank}{self.cards[0].symbol}   🎴"
+
+        # Second initial card stays hidden if hole card is True.
+        return f"{self.cards[0].rank}{self.cards[0].symbol}   🎴"
+
+    def hit(self, card: Card) -> None:
+        """Add a card to the hand (aka. hit)."""
+        self.cards.append(card)
 
 
-def handStr(dealerHand: BjHand, playerHand: BjHand):
-    return str(dealerHand) + "\n\n" + str(playerHand)
+def format_hands(dealer_hand: BlackjackHand, player_hand: BlackjackHand) -> str:
+    """Show a formatted string of two Blackjack hands to display.
+
+    Args:
+        dealer_hand (BlackjackHand): Dealer's hand.
+        player_hand (BlackjackHand): Player's hand.
+
+    Returns:
+        str: Return a formatted string to display.
+
+    """
+    return f"{dealer_hand}\n\n{player_hand}"
 
 
-def deck_creator(shoe: int = 1, shuffle: bool = True):
+def generate_deck(*, shoe: int = 1, shuffle: bool = True) -> list[Card]:
+    """Generate deck.
+
+    Args:
+        shoe (int, optional): Number of standard 52-card to be included in
+            deck(a.k.a. shoe). Defaults to 1.
+        shuffle (bool, optional): Whether to shuffle the deck list or not. Defaults to
+            True.
+
+    Returns:
+        list[Card]: Return the generated deck.
+
+    """
+    # Raise an error if shoe is 0.
+    if shoe == 0:
+        msg = "Shoe number can not be 0."
+        raise ValueError(msg)
+
+    # Raise an error if shoe is negative.
+    if shoe < 0:
+        msg = "Shoe number can not be negative."
+        raise ValueError(msg)
+
     deck: list[Card] = []
-    ranks = (2, 3, 4, 5, 6, 7, 8, 9, 10, "J", "Q", "K", "A")
-    suits = ("H", "C", "D", "S")
+    # Generate deck.
+    deck.extend(
+        Card(rank, suit)
+        for _ in range(shoe)
+        for rank in Card.RANKS
+        for suit in Card.SUITS
+    )
 
-    # creates the deck
-    for _ in range(shoe):
-        for rank in ranks:
-            for suit in suits:
-                deck.append(Card(rank, suit))
-
-    # shuffles the deck
+    # Shuffle deck if shuffle is True.
     if shuffle:
         random.shuffle(deck)
 
     return deck
 
 
+@final
 class Blackjack(commands.Cog):
-    def __init__(self, bot: commands.Bot):
+    """Blackjack command."""
+
+    def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
     Help = HelpData(
-        category=HelpData.Category.Games,
-        dm_only=False,
-        serverOnly=False,
+        category=HelpData.CommandCategory.GAMES,
+        is_dm_only=False,
+        is_server_only=False,
         subcommands=None,
         permissions=None,
-        help=None,
-        brief="The traditional BlackJack game.",
+        help_=(
+            "A card game where you compete against the dealer."
+            " Your goal is to have a hand value closer to 21"
+            " than the dealer's without going over 21."
+            "\nCard values:"
+            "\n2-10: Worth their face value."
+            "\nK, Q, J, 10: Worth 10 points."
+            "\nA: Worth 11 points by default, but is automatically counted as 1"
+            " whenever counting it as 11 would cause the hand to bust."
+            "\n1. You and the dealer are each dealt two initial cards. One of the"
+            " dealer's cards is face up, while the other"
+            " remains hidden as the hole card."
+            "\n2. If the dealer's upcard is an Ace, you'll"
+            " be offered the option to place"
+            " an Insurance side bet before play continues."
+            "\n3. On your turn choose `Hit` to draw another card, `Stand` to"
+            " end your turn, `Double Down` to double your bet and receive"
+            " exactly one more card or `Surrender` to end the game immediately and"
+            " forfeit half of your bet."
+            "\n4. If your hand exceeds 21, you `Bust` and immediately lose"
+            " the game and lose your bet."
+            "\n5. Once your turn ends, the dealer reveals the hole card and keeps"
+            " hitting until reaching 17 or higher."
+            "\n6. If the dealer busts, you win an amount equal to your bet."
+            " Otherwise, the hand closest"
+            " to 21 wins. If both hands have the same value, the round ends"
+            " in a `Push` and your bet is returned."
+            "\nNote: `Surrender` and `Double Down` can only be done before taking"
+            " any other action (Hit and Stand)."
+            "\nNote: Insurance will be offered only when the dealer's upcard is an Ace."
+            " You may place a side bet of up to half your original bet. If"
+            " the dealer has Blackjack, Insurance pays 2:1."
+            " Otherwise, the Insurance bet is lost and the round continues."
+            "\nNote: When the dealer's upcard is Ace or any 10-value card,"
+            " the dealer peeks at"
+            " the hole card; If the hole card makes the dealer's hand a"
+            " `Blackjack`, the dealer wins immediately and the player loses"
+            " unless they also have Blackjack which ends in a `Push`"
+            " and the player's bet will be returned. The Insurance bet is resolved"
+            " immediately after the dealer peeks at the hole card."
+            "\nNote: If the player is dealt a Blackjack, they immediately win the game"
+            " unless the dealer also has Blackjack."
+        ),
+        brief="The traditional Blackjack game.",
         usage="<bet_amount[*optional*]>",
         aliases=["bj"],
     )
 
-    @commands.command(name="blackjack", **Help.to_kwargs)
+    @commands.command(name="blackjack", **Help.kwargs)
     async def blackjack(
-        self, ctx: commands.Context[commands.Bot], bet: int | str | None = None
-    ):
-        # if player bets
-        if bet:
-            # if user enters an invalid bet
+        self,
+        ctx: commands.Context[commands.Bot],
+        bet: int | str | None = None,
+    ) -> None:
+        # Check bet validity if player bets.
+        if bet is not None:
+            # Raise an error if bet is not an integer.
             if not isinstance(bet, int):
-                return await ctx.reply("Enter a valid integer bet amount.")
+                _ = await ctx.reply("Enter a valid integer bet amount.")
+                return
 
-            # if player has an active session
-            if (ctx.author.id, Session.Types.gambling) in Session.sessions:
-                return await ctx.reply(
-                    "You have an open gambling session somewhere. Finish that one first and try again."
+            # Raise an error if bet is lower than minimum bet amount.
+            if bet < MIN_BET:
+                _ = await ctx.reply(
+                    f"The minimum bet amount for Blackjack is **{MIN_BET}**.",
                 )
+                return
+            # Raise an error if bet is higher than maximum bet amount.
+            if bet > MAX_BET:
+                _ = await ctx.reply(
+                    f"The maximum bet amount for Blackjack is **{MAX_BET}**.",
+                )
+                return
 
-            # if bet is lower than limit
-            if bet < 100:
-                return await ctx.reply(
-                    "The minimum bet limit for this game is **100**."
+            # Fetch user's bank account.
+            bank_account = await get_bank_account(ctx.author.id)
+            # Raise an error if user has no bank account.
+            if bank_account is None:
+                _ = await ctx.reply(
+                    (
+                        "You have no balance account !"
+                        "\nTry `/daily` to claim your first daily reward and get your"
+                        " balance account."
+                    ),
                 )
-            # if bet is higher than limit
-            elif bet > 300:
-                return await ctx.reply(
-                    "The maximum bet limit for this game is **300**."
-                )
+                return
 
-            # trys to fetch user's balance
-            row = await fetchone(
-                f"""
-                SELECT {AccountTable.COL_BALANCE} FROM {AccountTable.TABLE_NAME}
-                WHERE {AccountTable.COL_USER_ID} = ?;
-                """,
-                (ctx.author.id,),
-            )
-            # if user doesn't have an account
-            if not row:
-                return await ctx.reply(
-                    "You have no balance account ! Try `/daily` to claim your first daily reward and get your balance account."
+            # Raise an error if bet is higher than user's current balance.
+            if bet > bank_account.balance:
+                _ = await ctx.reply(
+                    (
+                        "Your desired bet is higher than your current balance."
+                        "\nTry `/balance` to see your balance."
+                    ),
                 )
+                return
+        else:
+            bank_account = None
 
-            if bet > row["balance"]:
-                return await ctx.reply(
-                    f"Your desired bet is higher than your current balance. Try `balance` to see your balance."
-                )
+        session = get_session(ctx.author.id, Session.Types.GAMBLING)
+        # Raise an error if user has an active session.
+        if session is not None:
+            _ = await ctx.reply("You have an open gambling session somewhere.")
+            return
 
-        Session(
-            userId=ctx.author.id, type=Session.Types.gambling
-        )  # opens a gambling session for the user
-        view = blackjackView(
-            ctx, bet if isinstance(bet, int) else 0
-        )  # initializes the view
-        await view.start()
+        # Open a gambling session for user.
+        session = Session(ctx.author.id, Session.Types.GAMBLING)
+
+        # Start Blackjack view.
+        await BlackjackView(ctx, bet, bank_account, session).start()
 
     @blackjack.error
     async def blackjack_error(
-        self, ctx: commands.Context[commands.Bot], error: commands.CommandError
-    ):
-        try:
-            Session.sessions[
-                (ctx.author.id, Session.Types.gambling)
-            ].close()  # ends the session upon error
-        except KeyError:
-            pass
+        self,
+        ctx: commands.Context[commands.Bot],
+        error: commands.CommandError,
+    ) -> None:
+        # Close user's gambling session if an error occurs.
+        session = get_session(ctx.author.id, Session.Types.GAMBLING)
+        if session:
+            _ = session.close()
 
-        logger.exception(f"❌ something went wrong with blackjack command:")
-        await ctx.reply("something went wrong with **blackjack**.")
+        logger.error("❌ Something went wrong with blackjack command.", exc_info=error)
+        _ = await ctx.reply("Something went wrong with **blackjack**.")
 
     # blackjack slash command
     @app_commands.command(name="blackjack", description=Help.brief, extras=Help.extras)
-    @app_commands.describe(
-        bet="The amount you want to set your initial bet. (max: 300/min: 100)"
-    )
-    async def slashBlackjack(
-        self, interaction: discord.Interaction, bet: int | None = None
-    ):
-        # if player bets
-        if bet:
-            # if player has an active session
-            if (interaction.user.id, Session.Types.gambling) in Session.sessions:
-                return await interaction.response.send_message(
-                    "You have an open gambling session somewhere. Finish that one first and try again.",
+    @app_commands.describe(bet="The amount you want to bet.")
+    async def slash_blackjack(
+        self,
+        interaction: discord.Interaction,
+        bet: int | None = None,
+    ) -> None:
+        # Check bet validity if player bets.
+        if bet is not None:
+            session = get_session(interaction.user.id, Session.Types.GAMBLING)
+            # Raise an error if user has an active session.
+            if session is not None:
+                _ = await interaction.response.send_message(
+                    "You have an open gambling session somewhere.",
                     ephemeral=True,
                 )
+                return
 
-            # if bet is lower than limit
-            if bet < 100:
-                return await interaction.response.send_message(
-                    "The minimum bet limit for this game is **100**.", ephemeral=True
-                )
-            # if bet is higher than limit
-            elif bet > 300:
-                return await interaction.response.send_message(
-                    "The maximum bet limit for this game is **300**.", ephemeral=True
-                )
-
-            # trys to fetch user's balance
-            row = await fetchone(
-                f"""
-                SELECT {AccountTable.COL_BALANCE} FROM {AccountTable.TABLE_NAME}
-                WHERE {AccountTable.COL_USER_ID} = ?;
-                """,
-                (interaction.user.id,),
-            )
-            # if user doesn't have an account
-            if not row:
-                return await interaction.response.send_message(
-                    "You have no balance account ! Try `/daily` to claim your first daily reward and get your balance account.",
+            # Raise an error if bet is lower than minimum bet amount.
+            if bet < MIN_BET:
+                _ = await interaction.response.send_message(
+                    f"The minimum bet amount for Blackjack is **{MIN_BET}**.",
                     ephemeral=True,
                 )
-
-            if bet > row["balance"]:
-                return await interaction.response.send_message(
-                    f"Your desired bet is higher than your current balance. Try `balance` to see your balance.",
+                return
+            # Raise an error if bet is higher than maximum bet amount.
+            if bet > MAX_BET:
+                _ = await interaction.response.send_message(
+                    f"The maximum bet amount for Blackjack is **{MAX_BET}**.",
                     ephemeral=True,
                 )
+                return
 
-        Session(
-            userId=interaction.user.id, type=Session.Types.gambling
-        )  # opens a gambling session for the user
-        view = blackjackView(
-            interaction, bet if isinstance(bet, int) else 0
-        )  # initializes the view
-        await view.start()
+            # Fetch user's bank account.
+            bank_account = await get_bank_account(interaction.user.id)
+            # Raise an error if user has no bank account.
+            if bank_account is None:
+                _ = await interaction.response.send_message(
+                    (
+                        "You have no balance account !"
+                        "\nTry `/daily` to claim your first daily reward and get your"
+                        " balance account."
+                    ),
+                    ephemeral=True,
+                )
+                return
 
-    @slashBlackjack.error
-    async def slashBlackjack_error(
-        self, interaction: discord.Interaction, error: Exception
-    ):
+            # Raise an error if bet is higher than user's current balance.
+            if bet > bank_account.balance:
+                _ = await interaction.response.send_message(
+                    (
+                        "Your desired bet is higher than your current balance."
+                        "\nTry `/balance` to see your balance."
+                    ),
+                    ephemeral=True,
+                )
+                return
+        else:
+            bank_account = None
+
+        # Open a gambling session for user.
+        session = Session(interaction.user.id, Session.Types.GAMBLING)
+
+        # Start Blackjack view.
+        await BlackjackView(interaction, bet, bank_account, session).start()
+
+    @slash_blackjack.error
+    async def slash_blackjack_error(
+        self,
+        interaction: discord.Interaction,
+        error: app_commands.AppCommandError,
+    ) -> None:
+        # Close user's gambling session if an error occurs.
+        session = get_session(interaction.user.id, Session.Types.GAMBLING)
+        if session:
+            _ = session.close()
+
+        logger.error("❌ Something went wrong with /blackjack command.", exc_info=error)
         try:
-            Session.sessions[
-                (interaction.user.id, Session.Types.gambling)
-            ].close()  # ends the session upon error
-        except KeyError:
-            pass
-
-        logger.exception(f"❌ something went wrong with /blackjack command:")
-        try:
-            await interaction.response.send_message(
-                "something went wrong with **blackjack**.", ephemeral=True
+            _ = await interaction.response.send_message(
+                "Something went wrong with **blackjack**.",
+                ephemeral=True,
             )
         except discord.InteractionResponded:
             await interaction.followup.send(
-                "something went wrong with **blackjack**.", ephemeral=True
+                "Something went wrong with **blackjack**.",
+                ephemeral=True,
             )
 
 
-class blackjackView(discord.ui.View):
+@final
+class BlackjackView(discord.ui.View):
     def __init__(
         self,
         ctx: commands.Context[commands.Bot] | discord.Interaction,
-        bet: int,
-    ):
+        bet: int | None,
+        bank_account: BankAccount | None,
+        session: Session,
+    ) -> None:
         super().__init__(timeout=180)
         if isinstance(ctx, discord.Interaction):
-            self.slash = True
+            self.slash_command = True
             self.interaction = ctx
+            self.user = self.interaction.user
         else:
-            self.slash = False
+            self.slash_command = False
             self.ctx = ctx
-        self.user = self.interaction.user if self.slash else self.ctx.author
-        self.bet = bet
-        self.outcome = 0
-        self.insurance = None
+            self.user = self.ctx.author
+        self.embed_color = discord.Color.random()
         self.timestamp = discord.utils.utcnow()
-        self.embedColor = discord.Color.random()
-        self.session = Session.sessions[(self.user.id, Session.Types.gambling)]
+
+        # The initial bet will be taken into pot.
+        if bet is not None:
+            self.bet: int = bet
+        if bank_account is not None:
+            self.bank_account: BankAccount = bank_account
+        self.player_bets: bool = bool(bet is not None and bank_account is not None)
+
+        self.session: Session = session
+
+        self.insurance = None
 
         for button in self.children:
-            self.remove_item(button)
+            _ = self.remove_item(button)
 
-    async def setBet(self, bet: int, firstBet: bool = False):
-        if bet != 0:
-            row = await fetchone(
-                f"""
-                SELECT {AccountTable.COL_BALANCE} FROM {AccountTable.TABLE_NAME}
-                WHERE {AccountTable.COL_USER_ID} = ?;
-                """,
-                (self.user.id,),
-            )
-            if row:
-                if firstBet:
-                    await execute(
-                        f"""
-                        UPDATE {AccountTable.TABLE_NAME}
-                        SET {AccountTable.COL_BALANCE} = ?
-                        WHERE {AccountTable.COL_USER_ID} = ?;
-                        """,
-                        (row["balance"] - bet, self.user.id),
-                    )
-                else:
-                    await execute(
-                        f"""
-                        UPDATE {AccountTable.TABLE_NAME}
-                        SET {AccountTable.COL_BALANCE} = ?
-                        WHERE {AccountTable.COL_USER_ID} = ?;
-                        """,
-                        (row["balance"] - (bet - self.bet), self.user.id),
-                    )
+    async def _edit_message(
+        self,
+        embed: discord.Embed,
+        view: discord.ui.View | None,
+    ) -> None:
+        """Edit sent message.
 
-                self.bet = bet
+        A helper that edits sent message whether it's application command message or
+        command message.
+
+        Args:
+            embed (discord.Embed): Embed to replace.
+            view (discord.ui.View | None): View to replace.
+
+        """
+        if self.slash_command:
+            _ = await self.interaction.edit_original_response(embed=embed, view=view)
+        else:
+            _ = await self.msg.edit(embed=embed, view=view)
+
+    def _finish(self) -> None:
+        """Finish the game.
+
+        A helper that finished the game by closing the session and stopping teh view.
+        """
+        # Close the session.
+        _ = self.session.close()
+
+        # Stop the view.
+        self.stop()
 
     @property
-    def insuranceStr(self):
-        if self.insurance == True:
-            if self.dealerHand.isBlackjack():
-                return "You accepted the insurance and I got a BlackJack ! You Won the insurance."
-            else:
-                return "You accepted the insurance and I got not a BlackJack ! You Lost the insurance."
-        elif self.insurance == False:
-            return "You refused the insurance."
+    def formatted_insurance_info(self) -> str:
+        """Return a formatted string that gives information about insurance.
 
-        else:
+        It must be included in every notification after the peeking hole card phase.
+        """
+        # If no insurance condition happens
+        if self.insurance is None:
             return ""
 
-    async def start(self):
-        await self.setBet(self.bet, firstBet=True)
+        # If player accepts the insurance
+        if self.insurance:
+            # If dealer gets Blackjack.
+            if self.dealer_hand.is_blackjack:
+                return (
+                    "You accepted the insurance and I got a Blackjack !"
+                    " You Won the insurance."
+                )
 
-        initialEmbed = discord.Embed(
-            title="BlackJack 🖤",
+            # If dealer doesn't get Blackjack.
+            return (
+                "You accepted the insurance and I got not a Blackjack !"
+                " You Lost the insurance."
+            )
+
+        # If player refuses the insurance
+        return "You refused the insurance."
+
+    async def start(self) -> None:
+        """Start Blackjack view."""
+        # Withdraw the initial bet if player bets.
+        if self.player_bets:
+            _ = await self.bank_account.withdraw(self.bet, "Blackjack wager.")
+
+            description = (
+                f"Blackjack starts with **{self.bet}** in the pot !"
+                "\nAs your Dealer, I may distribute our cards in a second.."
+            )
+        else:
+            description = (
+                "Blackjack starts !"
+                "\nAs your Dealer, I may distribute our cards in a second.."
+            )
+
+        initial_embed = discord.Embed(
+            color=self.embed_color,
+            title=BLACKJACK_EMBED_TITLE,
+            description=description,
+            timestamp=self.timestamp,
+        )
+        # Send initial embed.
+        if self.slash_command:
+            _ = await self.interaction.response.send_message(embed=initial_embed)
+        else:
+            self.msg = await self.ctx.reply(embed=initial_embed)
+
+        # Generate a 6 shoe deck.
+        self.deck = generate_deck(shoe=6, shuffle=True)
+
+        # Draw initial cards to both player and dealer.
+        self.player_hand = BlackjackHand([self.deck.pop() for _ in range(2)])
+        self.dealer_hand = BlackjackHand([self.deck.pop() for _ in range(2)])
+        # Dealer has a hole card (The face down card).
+        self.dealer_hand.hide_hole_card = True
+
+        await asyncio.sleep(3)  # Dramatic short delay
+
+        # Peek the hole card if face up card is A, K, Q, J, 10.
+        if self.dealer_hand.cards[0].rank in ("A", "K", "Q", "J", 10):
+            # Offer insurance if face up card is A and player bets.
+            if self.dealer_hand.cards[0].rank == "A" and self.player_bets:
+                await self.offer_insurance()
+            else:
+                await self.peek_hole()
+        else:
+            await self.player_turn()
+
+    async def offer_insurance(self) -> None:
+        # Add related buttons.
+        _ = self.add_item(self.refuse)
+        _ = self.add_item(self.accept)
+
+        insurance_offering_embed = discord.Embed(
+            color=self.embed_color,
+            title=BLACKJACK_EMBED_TITLE,
             description=(
-                f"The BlackJack starts with **{self.bet}** in the pot !"
-                "\nAs your Dealer, I may distribute our cards in a sec.."
+                "Cards have been distributed and it seems like"
+                " my first card is an ACE !"
+                "\nI'm offering you an Insurance (a side bet) with a cost of the half"
+                " amount your bet before I peek over my hole card."
+                "\nIf I peek my hole card and turns out I got Blackjack, you'll win an"
+                " amount equal to your bet."
+                "\nIf I get not Blackjack, you'll lose half of your bet.\n"
+                f"{format_hands(self.dealer_hand, self.player_hand)}"
             ),
             timestamp=self.timestamp,
-            color=self.embedColor,
         )
-        # sends the initial message
-        if self.slash:
-            await self.interaction.response.send_message(embed=initialEmbed)
-        else:
-            self.msg = await self.ctx.reply(embed=initialEmbed)
+        # Send insurance offering embed.
+        await self._edit_message(insurance_offering_embed, self)
 
-        self.deck = deck_creator(shoe=6)  # creates a 6-deck shoe
-        # distributes the initial 2 cards
-        self.playerHand = BjHand([self.deck.pop() for _ in range(2)])
-        self.dealerHand = BjHand([self.deck.pop() for _ in range(2)], dealers=True)
-
-        await asyncio.sleep(3)  # a short delay
-
-        # dealer must peek the hole card
-        if self.dealerHand.cards[0].rank in ("A", "K", "Q", "J", 10):
-            # if the face up card is an ace, dealer offers insurance first
-            if self.dealerHand.cards[0].rank == "A":
-                await self.insuranceOffer()
-            # skips the insurance otherwise
-            else:
-                await self.holePeek()
-        else:
-            await self.playersTurn()
-
-    async def insuranceOffer(self):
-        # adds the related buttons
-        self.add_item(self.refuse)
-        self.add_item(self.accept)
-
-        insuranceEmbed = discord.Embed(
-            title="BlackJack 🖤",
-            description=(
-                "Cards have been distributed and it seems like my first card is an ACE !"
-                "\nI'm offering you an Insurance (a side bet) with a cost of the half amount your bet before I peek over my hole card."
-                "\nIf I peek my hole card and turns out I got BlackJack, you'll win an amount equal to your bet."
-                "\nIf I get not BlackJack, you'll lose half of your bet.\n"
-            )
-            + handStr(self.dealerHand, self.playerHand),
-        )
-        if self.slash:
-            await self.interaction.edit_original_response(
-                embed=insuranceEmbed, view=self
-            )
-        else:
-            await self.msg.edit(embed=insuranceEmbed, view=self)
-
+    # refuse button
     @discord.ui.button(label="refuse", style=discord.ButtonStyle.red)
     async def refuse(
         self,
         interaction: discord.Interaction,
         button: discord.ui.Button[discord.ui.View],
-    ):
+    ) -> None:
+        # Raise an error if interaction is not from the user.
         if interaction.user.id != self.user.id:
-            return await interaction.response.send_message(
-                "You can't play in this match.", ephemeral=True
+            _ = await interaction.response.send_message(
+                "You can't play in this match.",
+                ephemeral=True,
             )
+            return
 
-        self.refuse.disabled = self.accept.disabled = True
-        self.remove_item(self.accept)
-        self.remove_item(self.refuse)
+        # Disable and remove refuse and accept buttons.
+        button.disabled = self.accept.disabled = True
+        _ = self.remove_item(self.refuse)
+        _ = self.remove_item(self.accept)
 
-        self.insurance = False  # doesn't take the insurance
-        await self.holePeek()
+        self.insurance = False
 
+        await self.peek_hole()
+
+    # accept button
     @discord.ui.button(label="accept", style=discord.ButtonStyle.green)
     async def accept(
         self,
         interaction: discord.Interaction,
         button: discord.ui.Button[discord.ui.View],
-    ):
+    ) -> None:
+        # Raise an error if interaction is not from the user.
         if interaction.user.id != self.user.id:
-            return await interaction.response.send_message(
-                "You can't play in this match.", ephemeral=True
+            _ = await interaction.response.send_message(
+                "You can't play in this match.",
+                ephemeral=True,
             )
+            return
 
-        self.refuse.disabled = self.accept.disabled = True
-        self.remove_item(self.accept)
-        self.remove_item(self.refuse)
+        # Disable and remove accept and refuse buttons.
+        button.disabled = self.refuse.disabled = True
+        _ = self.remove_item(self.refuse)
+        _ = self.remove_item(self.accept)
 
-        self.insurance = True  # takes the insurance for the player
-        await self.holePeek()
+        self.insurance = True
 
-    async def holePeek(self):
-        # if player took the insurance
-        if self.insurance == True:
-            # if dealer got blackjack
-            if self.dealerHand.isBlackjack():
-                self.outcome += self.bet
+        await self.peek_hole()
+
+    async def peek_hole(self) -> None:
+        # Resolve insurance bet.
+        if self.insurance and self.player_bets:
+            # Deposit an amount of bet if player wins insurance bet.
+            if self.dealer_hand.is_blackjack:
+                _ = await self.bank_account.deposit(
+                    self.bet,
+                    "Blackjack insurance payout.",
+                )
+
+            # Withdraw half amount of bet if player loses insurance bet.
             else:
-                self.outcome -= self.bet / 2
+                _ = await self.bank_account.withdraw(
+                    self.bet / 2,
+                    "Blackjack insurance loss.",
+                )
 
-        # if dealer got blackjack, match comes to an end
-        if self.dealerHand.isBlackjack():
-            self.dealerHand.holeCard = False  # reveals the hole card
+        # If dealer gets blackjack
+        if self.dealer_hand.is_blackjack:
+            # Reveal the hole card.
+            self.dealer_hand.hide_hole_card = False
 
-            # if player got blackjack too
-            if self.playerHand.isBlackjack():
-                resultEmbed = discord.Embed(
-                    title="BlackJack 🖤",
-                    description=self.insuranceStr
-                    + "\n\nWe both got BlackJack ! It's a push.\n\n"
-                    + handStr(self.dealerHand, self.playerHand),
+            # If player is dealt Blackjack, it's a push.
+            if self.player_hand.is_blackjack:
+                # Deposit the initial bet if it's a push.
+                if self.player_bets:
+                    _ = await self.bank_account.deposit(
+                        self.bet,
+                        "Blackjack push refund.",
+                    )
+
+                result_embed = discord.Embed(
+                    color=self.embed_color,
+                    title=BLACKJACK_EMBED_TITLE,
+                    description=(
+                        f"{self.formatted_insurance_info}"
+                        "\n\nWe both got Blackjack ! It's a push.\n\n"
+                        f"{format_hands(self.dealer_hand, self.player_hand)}"
+                    ),
                     timestamp=self.timestamp,
-                    color=self.embedColor,
                 )
-            else:
-                self.outcome -= self.bet
 
-                resultEmbed = discord.Embed(
-                    title="BlackJack 🖤",
-                    description=self.insuranceStr
-                    + "\n\nI got BlackJack ! I won this whole darling...\n\n"
-                    + handStr(self.dealerHand, self.playerHand),
+            # Player loses their bet if they're not dealt Blackjack too.
+            else:
+                result_embed = discord.Embed(
+                    color=self.embed_color,
+                    title=BLACKJACK_EMBED_TITLE,
+                    description=(
+                        f"{self.formatted_insurance_info}"
+                        "\n\nI got Blackjack ! I won this whole darling...\n\n"
+                        f"{format_hands(self.dealer_hand, self.player_hand)}"
+                    ),
                     timestamp=self.timestamp,
-                    color=self.embedColor,
                 )
 
-            await self.payout()
+            # Send result embed.
+            await self._edit_message(result_embed, None)
 
-            if self.slash:
-                await self.interaction.edit_original_response(
-                    embed=resultEmbed, view=None
-                )
-            else:
-                await self.msg.edit(embed=resultEmbed, view=None)
-
-            self.stop()
-
-        # player's turn otherwise
-        else:
-            await self.playersTurn()
-
-    async def playersTurn(self):
-        # if player got blackjack, the match comes to an end
-        if self.playerHand.isBlackjack():
-            self.outcome += 1.2 * self.bet
-
-            await self.payout()
-
-            self.dealerHand.holeCard = False  # reveals the hole card
-
-            resultEmbed = discord.Embed(
-                title="BlackJack 🖤",
-                description=self.insuranceStr
-                + "\n\nYou got a BlackJack ! You Won this match.\n\n"
-                + handStr(self.dealerHand, self.playerHand),
-                timestamp=self.timestamp,
-                color=self.embedColor,
-            )
-            if self.slash:
-                await self.interaction.edit_original_response(
-                    embed=resultEmbed, view=None
-                )
-            else:
-                await self.msg.edit(embed=resultEmbed, view=None)
-
-            self.stop()
+            # Finish the game.
+            self._finish()
 
         else:
-            self.add_item(self.hit)
-            self.add_item(self.stand)
-            self.add_item(self.surrender)
-            if self.playerHand.value in (9, 10, 11):
-                self.add_item(self.doubledown)
+            # Player turn starts.
+            await self.player_turn()
 
-            playerActionEmbed = discord.Embed(
-                title="BlackJack 🖤",
-                description=self.insuranceStr
-                + (
-                    "\n\nSince Neither of us got BlackJack, It's your turn now to decide what to do.\n\n"
+    async def player_turn(self) -> None:
+        # If player gets Blackjack
+        if self.player_hand.is_blackjack:
+            # Reveal the hole card.
+            self.dealer_hand.hide_hole_card = False
+
+            # Deposit initial bet + 6:5 (1.2) of player's bet.
+            if self.player_bets:
+                _ = await self.bank_account.deposit(
+                    self.bet * 2.2,
+                    "Blackjack blackjack payout.",
                 )
-                + handStr(self.dealerHand, self.playerHand),
+
+            result_embed = discord.Embed(
+                color=self.embed_color,
+                title=BLACKJACK_EMBED_TITLE,
+                description=(
+                    f"{self.formatted_insurance_info}"
+                    "\n\nYou got a Blackjack ! You Won this match.\n\n"
+                    f"{format_hands(self.dealer_hand, self.player_hand)}"
+                ),
                 timestamp=self.timestamp,
-                color=self.embedColor,
             )
-            if self.slash:
-                await self.interaction.edit_original_response(
-                    embed=playerActionEmbed, view=self
-                )
-            else:
-                await self.msg.edit(embed=playerActionEmbed, view=self)
+            # Send result embed.
+            await self._edit_message(result_embed, None)
 
+            # Finish the game.
+            self._finish()
+
+        else:
+            # Add player's turn related buttons
+            _ = self.add_item(self.hit)
+            _ = self.add_item(self.stand)
+            _ = self.add_item(self.surrender)
+            if self.player_hand.value in (9, 10, 11) and self.player_bets:
+                _ = self.add_item(self.double_down)
+
+            player_turn_embed = discord.Embed(
+                color=self.embed_color,
+                title=BLACKJACK_EMBED_TITLE,
+                description=(
+                    f"{self.formatted_insurance_info}"
+                    "\n\nSince Neither of us got Blackjack, It's your turn now"
+                    " to decide what to do.\n\n"
+                    f"{format_hands(self.dealer_hand, self.player_hand)}"
+                ),
+                timestamp=self.timestamp,
+            )
+            # Send player's turn notification embed.
+            await self._edit_message(embed=player_turn_embed, view=self)
+
+    # hit button
     @discord.ui.button(label="hit", style=discord.ButtonStyle.gray)
     async def hit(
         self,
         interaction: discord.Interaction,
-        button: discord.ui.Button[discord.ui.View],
-    ):
+        _button: discord.ui.Button[discord.ui.View],
+    ) -> None:
+        # Raise an error if interaction is not from the user.
         if interaction.user.id != self.user.id:
-            return await interaction.response.send_message(
-                "You can't play in this match.", ephemeral=True
+            _ = await interaction.response.send_message(
+                "You can't play in this match.",
+                ephemeral=True,
             )
+            return
 
-        self.surrender.disabled = self.doubledown.disabled = (
-            True  # disables surrender and double down buttons
-        )
-        self.playerHand.addCard(self.deck.pop())  # adds a card to player's hand
+        # Disable and remove surrender and double down buttons.
+        self.surrender.disabled = self.double_down.disabled = True
 
-        # if player busts, match comes to an end
-        if self.playerHand.isBusted():
-            self.outcome -= self.bet
+        # Hit one card to the player's hand.
+        self.player_hand.hit(self.deck.pop())
 
-            await self.payout()
+        # If player busts, they lose their bet.
+        if self.player_hand.is_busted:
+            # Reveal the hole card.
+            self.dealer_hand.hide_hole_card = False
 
-            self.dealerHand.holeCard = False  # reveals the hole card
-
-            resultEmbed = discord.Embed(
-                title="BlackJack 🖤",
-                description=self.insuranceStr
-                + ("\n\nYou Hit and Bust ! You lost..\n\n")
-                + handStr(self.dealerHand, self.playerHand),
+            result_embed = discord.Embed(
+                color=self.embed_color,
+                title=BLACKJACK_EMBED_TITLE,
+                description=(
+                    f"{self.formatted_insurance_info}"
+                    "\n\nYou Hit and Bust ! You lost..\n\n"
+                    f"{format_hands(self.dealer_hand, self.player_hand)}"
+                ),
                 timestamp=self.timestamp,
-                color=self.embedColor,
             )
-            if self.slash:
-                await self.interaction.edit_original_response(
-                    embed=resultEmbed, view=None
-                )
-            else:
-                await self.msg.edit(embed=resultEmbed, view=None)
+            # Send result embed.
+            await self._edit_message(embed=result_embed, view=None)
 
-            self.stop()
+            # Finish the game.
+            self._finish()
+
         else:
-            hitEmbed = discord.Embed(
-                title="BlackJack 🖤",
-                description=self.insuranceStr
-                + ("\n\nYou Hit.\n\n")
-                + handStr(self.dealerHand, self.playerHand),
+            hit_embed = discord.Embed(
+                color=self.embed_color,
+                title=BLACKJACK_EMBED_TITLE,
+                description=(
+                    f"{self.formatted_insurance_info}"
+                    "\n\nYou Hit.\n\n"
+                    f"{format_hands(self.dealer_hand, self.player_hand)}"
+                ),
                 timestamp=self.timestamp,
-                color=self.embedColor,
             )
-            if self.slash:
-                await self.interaction.edit_original_response(embed=hitEmbed, view=self)
-            else:
-                await self.msg.edit(embed=hitEmbed, view=self)
+            # Send hit embed.
+            await self._edit_message(embed=hit_embed, view=self)
 
+    # stand button
     @discord.ui.button(label="stand", style=discord.ButtonStyle.gray)
     async def stand(
         self,
         interaction: discord.Interaction,
-        button: discord.ui.Button[discord.ui.View],
-    ):
+        _button: discord.ui.Button[discord.ui.View],
+    ) -> None:
+        # Raise an error if interaction is not form the user.
         if interaction.user.id != self.user.id:
-            return await interaction.response.send_message(
-                "You can't play in this match.", ephemeral=True
+            _ = await interaction.response.send_message(
+                "You can't play in this match.",
+                ephemeral=True,
             )
+            return
 
-        await self.dealersTurn()
+        await self.dealer_turn()
 
+    # double down button
     @discord.ui.button(label="double down", style=discord.ButtonStyle.blurple)
-    async def doubledown(
+    async def double_down(
         self,
         interaction: discord.Interaction,
-        button: discord.ui.Button[discord.ui.View],
-    ):
+        _button: discord.ui.Button[discord.ui.View],
+    ) -> None:
+        # Raise an error if interaction is not form the user.
         if interaction.user.id != self.user.id:
-            return await interaction.response.send_message(
-                "You can't play in this match.", ephemeral=True
+            _ = await interaction.response.send_message(
+                "You can't play in this match.",
+                ephemeral=True,
             )
+            return
 
-        await self.setBet(2 * self.bet)
+        # Withdraw bet for double down bet.
+        if self.player_bets:
+            _ = await self.bank_account.withdraw(
+                self.bet,
+                "Blackjack double down wager.",
+            )
+        # Update bet in the pot.
+        self.bet *= 2
 
-        self.playerHand.addCard(self.deck.pop())  # adds the final card for the player
+        # Hit one more card to the player's hand.
+        self.player_hand.hit(self.deck.pop())
 
-        # if player busts, match comes to an end
-        if self.playerHand.isBusted():
-            self.outcome -= self.bet
+        # If player busts, they lose their bet.
+        if self.player_hand.is_busted:
+            # Reveal the hole card.
+            self.dealer_hand.hide_hole_card = False
 
-            await self.payout()
-
-            self.dealerHand.holeCard = False  # reveals the hole card
-
-            resultEmbed = discord.Embed(
-                title="BlackJack 🖤",
-                description=self.insuranceStr
-                + ("\n\nYou Doubled Down and Bust ! You lost it so bad..\n\n")
-                + handStr(self.dealerHand, self.playerHand),
+            result_embed = discord.Embed(
+                color=self.embed_color,
+                title=BLACKJACK_EMBED_TITLE,
+                description=(
+                    f"{self.formatted_insurance_info}"
+                    "\n\nYou Doubled Down and Bust ! You lost it so bad..\n\n"
+                    f"{format_hands(self.dealer_hand, self.player_hand)}"
+                ),
                 timestamp=self.timestamp,
-                color=self.embedColor,
             )
-            if self.slash:
-                await self.interaction.edit_original_response(
-                    embed=resultEmbed, view=None
-                )
-            else:
-                await self.msg.edit(embed=resultEmbed, view=None)
+            # Send result embed.
+            await self._edit_message(embed=result_embed, view=None)
 
-            self.stop()
+            # Finish the game.
+            self._finish()
+
         else:
-            await self.dealersTurn()
+            await self.dealer_turn()
 
+    # surrender button
     @discord.ui.button(label="surrender", style=discord.ButtonStyle.red)
     async def surrender(
         self,
         interaction: discord.Interaction,
-        button: discord.ui.Button[discord.ui.View],
-    ):
+        _button: discord.ui.Button[discord.ui.View],
+    ) -> None:
+        # Raise an error if interaction is not form the user.
         if interaction.user.id != self.user.id:
-            return await interaction.response.send_message(
-                "You can't play in this match.", ephemeral=True
+            _ = await interaction.response.send_message(
+                "You can't play in this match.",
+                ephemeral=True,
+            )
+            return
+
+        # Reveal the hole card.
+        self.dealer_hand.hide_hole_card = False
+
+        # Deposit half of bet if player surrenders and forfeits half of their bet.
+        if self.player_bets:
+            _ = await self.bank_account.deposit(
+                self.bet / 2,
+                "Blackjack surrender refund.",
             )
 
-        self.outcome -= self.bet / 2
-
-        await self.payout()
-
-        self.dealerHand.holeCard = False  # reveals the hole card
-
-        surrenderEmbed = discord.Embed(
-            title="BlackJack 🖤",
-            description=self.insuranceStr
-            + ("\n\nYou surrendered and forfeit half of your bet.\n\n")
-            + handStr(self.dealerHand, self.playerHand),
-            timestamp=self.timestamp,
-            color=self.embedColor,
-        )
-        if self.slash:
-            await self.interaction.edit_original_response(
-                embed=surrenderEmbed, view=None
-            )
-        else:
-            await self.msg.edit(embed=surrenderEmbed, view=None)
-
-        self.stop()
-
-    async def dealersTurn(self):
-        self.dealerHand.holeCard = False  # reveals the hole card
-
-        dealerTurnEmbed = discord.Embed(
-            title="BlackJack 🖤",
-            description=self.insuranceStr
-            + ("\n\nIt's now my turn to play the hole card.\n\n")
-            + handStr(self.dealerHand, self.playerHand),
-            timestamp=self.timestamp,
-            color=self.embedColor,
-        )
-        if self.slash:
-            await self.interaction.edit_original_response(
-                embed=dealerTurnEmbed, view=None
+            description = (
+                f"{self.formatted_insurance_info}"
+                "\n\nYou surrendered and forfeit half of your bet.\n\n"
+                f"{format_hands(self.dealer_hand, self.player_hand)}"
             )
         else:
-            await self.msg.edit(embed=dealerTurnEmbed, view=None)
+            description = (
+                f"{self.formatted_insurance_info}"
+                "\n\nYou surrendered.\n\n"
+                f"{format_hands(self.dealer_hand, self.player_hand)}"
+            )
 
-        await asyncio.sleep(3)  # a short delay
+        surrender_embed = discord.Embed(
+            color=self.embed_color,
+            title=BLACKJACK_EMBED_TITLE,
+            description=description,
+            timestamp=self.timestamp,
+        )
+        # Send surrender embed.
+        await self._edit_message(embed=surrender_embed, view=None)
 
-        # while dealer has <=16, it hits
-        while self.dealerHand.value <= 16:
-            dealerHitEmbed = discord.Embed(
-                title="BlackJack 🖤",
-                description=self.insuranceStr
-                + (f"\n\nI got {self.dealerHand.value}. I must Hit.\n\n")
-                + handStr(self.dealerHand, self.playerHand),
+        # Finish the game.
+        self._finish()
+
+    async def dealer_turn(self) -> None:
+        # Reveal the hole card.
+        self.dealer_hand.hide_hole_card = False
+
+        dealer_turn_embed = discord.Embed(
+            color=self.embed_color,
+            title=BLACKJACK_EMBED_TITLE,
+            description=(
+                f"{self.formatted_insurance_info}"
+                "\n\nIt's now my turn to play the hole card.\n\n"
+                f"{format_hands(self.dealer_hand, self.player_hand)}"
+            ),
+            timestamp=self.timestamp,
+        )
+        # Send dealer turn notification embed.
+        await self._edit_message(embed=dealer_turn_embed, view=None)
+
+        await asyncio.sleep(3)  # Dramatic short delay
+
+        # Hit one card to the dealer's hand until the value is <= 16.
+        while self.dealer_hand.value <= DEALER_STAND_VALUE:
+            dealer_hit_embed = discord.Embed(
+                color=self.embed_color,
+                title=BLACKJACK_EMBED_TITLE,
+                description=(
+                    f"{self.formatted_insurance_info}"
+                    f"\n\nI got {self.dealer_hand.value}. I must Hit.\n\n"
+                    f"{format_hands(self.dealer_hand, self.player_hand)}"
+                ),
                 timestamp=self.timestamp,
-                color=self.embedColor,
             )
-            if self.slash:
-                await self.interaction.edit_original_response(embed=dealerHitEmbed)
-            else:
-                await self.msg.edit(embed=dealerHitEmbed)
+            # Send dealer hit notification embed.
+            await self._edit_message(embed=dealer_hit_embed, view=None)
 
-            await asyncio.sleep(2)  # a short delay
+            await asyncio.sleep(2)  # Dramatic short delay
 
-            self.dealerHand.addCard(self.deck.pop())  # adds a card to dealer's hand
-            # if dealer busts, match comes to an end
-            if self.dealerHand.isBusted():
-                self.outcome += self.bet
+            # Hit one card to the dealer's hand.
+            self.dealer_hand.hit(self.deck.pop())
 
-                await self.payout()
-
-                resultEmbed = discord.Embed(
-                    title="BlackJack 🖤",
-                    description=self.insuranceStr
-                    + f"\n\nI got {self.dealerHand.value}. I Bust ! You Won the match.\n\n"
-                    + handStr(self.dealerHand, self.playerHand),
-                    timestamp=self.timestamp,
-                    color=self.embedColor,
-                )
-                if self.slash:
-                    await self.interaction.edit_original_response(
-                        embed=resultEmbed, view=None
+            # If dealer busts
+            if self.dealer_hand.is_busted:
+                # Deposit initial bet + an amount of bet if the dealer busts.
+                if self.player_bets:
+                    _ = await self.bank_account.deposit(
+                        self.bet * 2,
+                        "Blackjack win payout.",
                     )
-                else:
-                    await self.msg.edit(embed=resultEmbed, view=None)
 
-                self.stop()
+                result_embed = discord.Embed(
+                    color=self.embed_color,
+                    title=BLACKJACK_EMBED_TITLE,
+                    description=(
+                        f"{self.formatted_insurance_info}"
+                        f"\n\nI got {self.dealer_hand.value}. I Bust !"
+                        " You Won the match.\n\n"
+                        f"{format_hands(self.dealer_hand, self.player_hand)}"
+                    ),
+                    timestamp=self.timestamp,
+                )
+                # Send result embed.
+                await self._edit_message(embed=result_embed, view=None)
+
+                # Finish the game.
+                self._finish()
+
                 return
 
-        # showdown
-        if self.dealerHand.value == self.playerHand.value:
-            resultEmbed = discord.Embed(
-                title="BlackJack 🖤",
-                description=self.insuranceStr
-                + (f"\n\nWe have equal scores ! This match is a push.\n\n")
-                + handStr(self.dealerHand, self.playerHand),
+        # If dealer and player value are equal, it's a push.
+        if self.dealer_hand.value == self.player_hand.value:
+            result_embed = discord.Embed(
+                color=self.embed_color,
+                title=BLACKJACK_EMBED_TITLE,
+                description=(
+                    f"{self.formatted_insurance_info}"
+                    "\n\nWe have equal scores ! This match is a push.\n\n"
+                    f"{format_hands(self.dealer_hand, self.player_hand)}"
+                ),
                 timestamp=self.timestamp,
-                color=self.embedColor,
             )
-            if self.slash:
-                await self.interaction.edit_original_response(
-                    embed=resultEmbed, view=None
+            # Send result embed.
+            await self._edit_message(embed=result_embed, view=None)
+
+        # If player's value is higher
+        elif self.player_hand.value > self.dealer_hand.value:
+            # Deposit initial bet + an amount of bet if player has higher value.
+            if self.player_bets:
+                _ = await self.bank_account.deposit(
+                    self.bet * 2,
+                    "Blackjack win payout.",
                 )
-            else:
-                await self.msg.edit(embed=resultEmbed, view=None)
 
-        elif self.playerHand.value > self.dealerHand.value:
-            self.outcome += self.bet
-
-            resultEmbed = discord.Embed(
-                title="BlackJack 🖤",
-                description=self.insuranceStr
-                + (f"\n\nYou have a higher score ! You Won.\n\n")
-                + handStr(self.dealerHand, self.playerHand),
+            result_embed = discord.Embed(
+                color=self.embed_color,
+                title=BLACKJACK_EMBED_TITLE,
+                description=(
+                    f"{self.formatted_insurance_info}"
+                    "\n\nYou have a higher score ! You Won.\n\n"
+                    f"{format_hands(self.dealer_hand, self.player_hand)}"
+                ),
                 timestamp=self.timestamp,
-                color=self.embedColor,
             )
-            if self.slash:
-                await self.interaction.edit_original_response(
-                    embed=resultEmbed, view=None
-                )
-            else:
-                await self.msg.edit(embed=resultEmbed, view=None)
+            # Send result embed.
+            await self._edit_message(embed=result_embed, view=None)
+
+        # If dealer's value is higher, player loses their bet.
         else:
-            self.outcome -= self.bet
-
-            resultEmbed = discord.Embed(
-                title="BlackJack 🖤",
-                description=self.insuranceStr
-                + (f"\n\nI have a higher score ! You lost.\n\n")
-                + handStr(self.dealerHand, self.playerHand),
+            result_embed = discord.Embed(
+                color=self.embed_color,
+                title=BLACKJACK_EMBED_TITLE,
+                description=(
+                    f"{self.formatted_insurance_info}"
+                    "\n\nI have a higher score ! You lost.\n\n"
+                    f"{format_hands(self.dealer_hand, self.player_hand)}"
+                ),
                 timestamp=self.timestamp,
-                color=self.embedColor,
             )
-            if self.slash:
-                await self.interaction.edit_original_response(
-                    embed=resultEmbed, view=None
-                )
-            else:
-                await self.msg.edit(embed=resultEmbed, view=None)
+            # Send result embed.
+            await self._edit_message(embed=result_embed, view=None)
 
-        await self.payout()
-        self.stop()
+        # Finish the game.
+        self._finish()
 
-    async def payout(self):
-        self.session.close()  # ends the session
-
-        if self.outcome != 0:
-            # fetches user's balance
-            row = await fetchone(
-                f"""
-                SELECT {AccountTable.COL_BALANCE} FROM {AccountTable.TABLE_NAME}
-                WHERE {AccountTable.COL_USER_ID} = ?;
-                """,
-                (self.user.id,),
-            )
-            if row:
-                # updates user balance based on the outcome and returns the bet
-                await execute(
-                    f"""
-                    UPDATE {AccountTable.TABLE_NAME}
-                    SET {AccountTable.COL_BALANCE} = ?
-                    WHERE {AccountTable.COL_USER_ID} = ?;
-                    """,
-                    (row["balance"] + self.bet + self.outcome, self.user.id),
-                )
-
-    async def on_timeout(self):
-        self.outcome -= self.bet / 2
-
-        await self.payout()
-
-        # disables buttons on timeout
+    @override
+    async def on_timeout(self) -> None:
+        # Disable buttons upon timeout.
         for btn in self.children:
             if isinstance(btn, discord.ui.Button):
                 btn.disabled = True
 
-        # sends the timeout message
-        toEmbed = discord.Embed(
-            title="BlackJack 🖤",
-            description="⏰ Game timeout. which results in surrendering and forfeiting half amount of bet.",
+        if self.player_bets:
+            # Deposit half amount of bet if player timeouts which results in
+            # surrendering and forfeiting half of their bet.
+            _ = await self.bank_account.deposit(
+                self.bet / 2,
+                "Blackjack surrender refund.",
+            )
+
+            description = (
+                "⏰ Game timeout. which results in surrendering and forfeiting"
+                " half amount of bet."
+            )
+        else:
+            description = "⏰ Game timeout. which results in surrendering."
+
+        timeout_embed = discord.Embed(
+            color=self.embed_color,
+            title=BLACKJACK_EMBED_TITLE,
+            description=description,
             timestamp=self.timestamp,
-            color=self.embedColor,
         )
-        try:
-            if self.slash:
-                await self.interaction.edit_original_response(embed=toEmbed, view=self)
-            else:
-                await self.msg.edit(embed=toEmbed, view=self)
-        except discord.NotFound:
-            pass
+        # Send timeout embed.
+        with contextlib.suppress(discord.NotFound):
+            await self._edit_message(embed=timeout_embed, view=self)
 
-        self.stop()  # stops the interaction upon timeout
+        # Finish the game.
+        self._finish()
 
+    @override
     async def on_error(
         self,
         interaction: discord.Interaction,
         error: Exception,
         item: discord.ui.Item[discord.ui.View],
-    ):
-        self.session.close()  # ends the session upon error
+    ) -> None:
+        # Return the initial bet upon error.
+        if self.player_bets:
+            _ = await self.bank_account.deposit(self.bet, "Blackjack error refund.")
 
-        # fetches user's balance
-        row = await fetchone(
-            f"""
-            SELECT {AccountTable.COL_BALANCE} FROM {AccountTable.TABLE_NAME}
-            WHERE {AccountTable.COL_USER_ID} = ?;
-            """,
-            (self.user.id,),
-        )
-        if row:
-            # returns back the bet
-            await execute(
-                f"""
-                UPDATE {AccountTable.TABLE_NAME}
-                SET {AccountTable.COL_BALANCE} = ?
-                WHERE {AccountTable.COL_USER_ID} = ?;
-                """,
-                (row["balance"] + self.bet, self.user.id),
-            )
-
-        logger.exception(
-            f"❌ something went wrong with blackjack interaction - button: {getattr(item, 'label', 'unknown')}"
+        logger.error(
+            "❌ Something went wrong with blackjack interaction - button: %s",
+            getattr(item, "label", "unknown"),
+            exc_info=error,
         )
         try:
-            await interaction.response.send_message(
-                "something went wrong with **blackjack**.", ephemeral=True
+            _ = await interaction.response.send_message(
+                "Something went wrong with **blackjack**.",
+                ephemeral=True,
             )
         except discord.InteractionResponded:
             await interaction.followup.send(
-                "something went wrong with **blackjack**.", ephemeral=True
+                "Something went wrong with **blackjack**.",
+                ephemeral=True,
             )
-        except Exception:
+        except discord.HTTPException:
             pass
 
-        self.stop()  # stops the interaction upon error
+        # Finish the game.
+        self._finish()
 
 
-async def setup(bot: commands.Bot):
+async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Blackjack(bot))
