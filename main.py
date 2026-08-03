@@ -2,7 +2,7 @@
 
 """The main file of Amélie that needs to be run directly.
 
-It's the entry point for other modules.
+It's the entry point for modules.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ from discord.ext import commands, tasks
 import cogs
 from core import terminal
 from core.database import initialize_tables
-from core.log_handler import logger_setup
+from core.log_handler import setup_logger
 
 BOT = commands.Bot(
     command_prefix=".",
@@ -34,41 +34,44 @@ BOT = commands.Bot(
 
 class _Config(TypedDict):
     TOKEN: str
-    ADMINS: list[str]
+    ADMINS: list[int]
 
 
 # Read the stored token from config.json file.
 with Path("config.json").open("r") as file:
     CONFIG: _Config = cast("_Config", json.load(file))
 
-logger = logger_setup(__name__)
+logger = setup_logger(__name__)
 
 
-async def _cog_loader() -> None:
+async def _load_cogs() -> None:
     """Load all cogs from cog directory."""
-    succeed: list[str] = []
-    failed: list[str] = []
+    successful: list[str] = []
+    failing: list[str] = []
+
+    solo: list[str] = ["help", "blackjack", "synccommandtree"]
+
     for module_info in pkgutil.walk_packages(cogs.__path__, cogs.__name__ + "."):
+        module_name = module_info.name.split(".")[-1]
+
         # Skip if it's a directory.
         if module_info.ispkg:
+            continue
+
+        if solo and module_name not in solo:
             continue
 
         try:
             # Load the cog.
             await BOT.load_extension(module_info.name)
-            succeed.append(module_info.name.split(".")[-1])
-        except Exception:
-            logger.exception(
-                "❌ %s couldn't be loaded: ",
-                module_info.name.split(".")[-1],
-            )
-            failed.append(module_info.name.split(".")[-1])
+            successful.append(module_name)
+        except commands.errors.ExtensionError:
+            logger.exception("❌ %s couldn't be loaded: ", module_name)
+            failing.append(module_name)
 
-            raise
-
-    if failed:
-        logger.error("%s cogs failed to get loaded ❌", failed)
-    logger.info("%s cogs have been loaded ☑️", succeed)
+    if failing:
+        logger.error("%s cogs failed to get loaded ❌", failing)
+    logger.info("%s cogs have been loaded ☑️", successful)
 
 
 async def _terminal_listener() -> NoReturn:
@@ -92,23 +95,25 @@ async def on_ready() -> None:
 
 
 # Store Amélie's different status.
-bot_status = cycle([
-    discord.Activity(
-        type=discord.ActivityType.playing,
-        name="Fortnite",
-        platform="PS4",
-    ),
-    discord.Activity(
-        type=discord.ActivityType.playing,
-        name="playing with your server",
-    ),
-    discord.Activity(
-        type=discord.ActivityType.listening,
-        name="listening to your complaints",
-    ),
-    discord.Activity(type=discord.ActivityType.watching, name="watching reels"),
-    discord.Activity(type=discord.ActivityType.playing, name="lanat be in zendegi"),
-])
+bot_status = cycle(
+    [
+        discord.Activity(
+            type=discord.ActivityType.playing,
+            name="Fortnite",
+            platform="PS4",
+        ),
+        discord.Activity(
+            type=discord.ActivityType.playing,
+            name="playing with your server",
+        ),
+        discord.Activity(
+            type=discord.ActivityType.listening,
+            name="listening to your complaints",
+        ),
+        discord.Activity(type=discord.ActivityType.watching, name="watching reels"),
+        discord.Activity(type=discord.ActivityType.playing, name="lanat be in zendegi"),
+    ],
+)
 
 
 @tasks.loop(minutes=2)
@@ -120,10 +125,10 @@ async def bot_status_change() -> None:
 async def _main() -> None:
     # Initialize DB tables.
     await initialize_tables()
-    logger.info("💾 Database tables initialization complete.")
 
     async with BOT:
-        await _cog_loader()
+        await _load_cogs()
+
         try:
             # Start the bot.
             await BOT.start(CONFIG["TOKEN"])
