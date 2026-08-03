@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-__all__ = ["logger_setup"]
+__all__ = ["setup_logger"]
 
 import logging
 from typing import final, override
@@ -13,7 +13,7 @@ init(autoreset=True)  # ensures colors reset automatically
 
 
 @final
-class ColorFormatter(logging.Formatter):
+class _ColorFormatter(logging.Formatter):
     COLORS = {  # noqa: RUF012
         logging.INFO: Fore.BLUE,
         logging.WARNING: Fore.YELLOW,
@@ -28,7 +28,7 @@ class ColorFormatter(logging.Formatter):
         return color + message + Style.RESET_ALL
 
 
-def logger_setup(logger_name: str) -> logging.Logger:
+def setup_logger(logger_name: str) -> logging.Logger:
     """Create and configure a logger with separate file and console handlers.
 
     Args:
@@ -58,7 +58,7 @@ def logger_setup(logger_name: str) -> logging.Logger:
     # console handler
     console_handler = logging.StreamHandler()
     console_handler.setLevel(logging.INFO)  # everything will be logged on the console
-    console_handler_format = ColorFormatter("%(name)s - %(levelname)s - %(message)s")
+    console_handler_format = _ColorFormatter("%(name)s - %(levelname)s - %(message)s")
     console_handler.setFormatter(console_handler_format)
 
     logger.addHandler(file_handler)  # adds file handler
