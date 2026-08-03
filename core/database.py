@@ -10,17 +10,15 @@ from __future__ import annotations
 
 __all__ = ["execute", "fetchall", "fetchone", "initialize_tables"]
 
-import contextlib
-from enum import Enum
-from typing import TYPE_CHECKING, Any, TypeVar, final
+from typing import TYPE_CHECKING, Any, TypeVar
 
 import aiosqlite
 
 from core.dbconstants import (
     AccountTable,
-    AnonContactTable,
     AnonSessionTable,
-    AnonUserTable,
+    AnonymousContactTable,
+    AnonymousUserTable,
     CheckTable,
     InventoryTable,
     LotteryTable,
@@ -28,14 +26,12 @@ from core.dbconstants import (
     TransactionTable,
     WarnTable,
 )
-from core.log_handler import logger_setup
+from core.log_handler import setup_logger
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterable
     from sqlite3 import Row
 
-    import discord
-    from discord.ext import commands
 
 DATABASE_PATH = "bot_database.db"
 TABLES: tuple[str, ...] = (
@@ -49,16 +45,18 @@ TABLES: tuple[str, ...] = (
     );
     """,
     f"""
-    CREATE TABLE IF NOT EXISTS {AnonContactTable.TABLE_NAME} (
-        {AnonContactTable.COL_ID} INTEGER PRIMARY KEY AUTOINCREMENT,
-        {AnonContactTable.COL_USER_ID} INTEGER NOT NULL,
-        {AnonContactTable.COL_CONTACT_ID} INTEGER NOT NULL,
-        {AnonContactTable.COL_CONTACT_ANON_ID} TEXT NOT NULL,
-        {AnonContactTable.COL_BLOCKED} INTEGER DEFAULT 0,
-        FOREIGN KEY ({AnonContactTable.COL_USER_ID}) REFERENCES
-        {AnonUserTable.TABLE_NAME}({AnonUserTable.COL_USER_ID}),
-        UNIQUE({AnonContactTable.COL_USER_ID}, {AnonContactTable.COL_CONTACT_ID}),
-        UNIQUE({AnonContactTable.COL_USER_ID}, {AnonContactTable.COL_CONTACT_ANON_ID})
+    CREATE TABLE IF NOT EXISTS {AnonymousContactTable.TABLE_NAME} (
+        {AnonymousContactTable.COL_ID} INTEGER PRIMARY KEY AUTOINCREMENT,
+        {AnonymousContactTable.COL_RECIPIENT_ID} INTEGER NOT NULL,
+        {AnonymousContactTable.COL_USER_ID} INTEGER NOT NULL,
+        {AnonymousContactTable.COL_ALIAS} TEXT NOT NULL,
+        {AnonymousContactTable.COL_IS_BLOCKED} BOOLEAN DEFAULT FALSE,
+        FOREIGN KEY ({AnonymousContactTable.COL_RECIPIENT_ID}) REFERENCES
+        {AnonymousUserTable.TABLE_NAME}({AnonymousUserTable.COL_USER_ID}),
+        UNIQUE({AnonymousContactTable.COL_RECIPIENT_ID},
+        {AnonymousContactTable.COL_USER_ID}),
+        UNIQUE({AnonymousContactTable.COL_RECIPIENT_ID},
+        {AnonymousContactTable.COL_ALIAS})
     );
     """,
     f"""
@@ -71,16 +69,16 @@ TABLES: tuple[str, ...] = (
         {AnonSessionTable.COL_SESSION_DATE} DATETIME DEFAULT CURRENT_TIMESTAMP,
         {AnonSessionTable.COL_RESPONDED} INTEGER DEFAULT 0,
         FOREIGN KEY ({AnonSessionTable.COL_RECEIVER_ID}) REFERENCES
-        {AnonUserTable.TABLE_NAME}({AnonUserTable.COL_USER_ID}),
+        {AnonymousUserTable.TABLE_NAME}({AnonymousUserTable.COL_USER_ID}),
         UNIQUE({AnonSessionTable.COL_RECEIVER_ID},
         {AnonSessionTable.COL_CONTACT_ANON_ID}, {AnonSessionTable.COL_SESSION_ID})
     );
     """,
     f"""
-    CREATE TABLE IF NOT EXISTS {AnonUserTable.TABLE_NAME} (
-        {AnonUserTable.COL_USER_ID} INTEGER PRIMARY KEY NOT NULL,
-        {AnonUserTable.COL_PUBLIC_ID} TEXT NOT NULL,
-        {AnonUserTable.COL_CREATED_AT} DATETIME DEFAULT CURRENT_TIMESTAMP
+    CREATE TABLE IF NOT EXISTS {AnonymousUserTable.TABLE_NAME} (
+        {AnonymousUserTable.COL_USER_ID} INTEGER PRIMARY KEY NOT NULL,
+        {AnonymousUserTable.COL_PUBLIC_ID} TEXT NOT NULL,
+        {AnonymousUserTable.COL_CREATED_AT} INTEGER NOT NULL
     );
     """,
     f"""
@@ -89,9 +87,9 @@ TABLES: tuple[str, ...] = (
         {CheckTable.COL_SENDER_ID} INTEGER NOT NULL,
         {CheckTable.COL_AMOUNT} INTEGER NOT NULL,
         {CheckTable.COL_RECEIVER_ID} INTEGER NOT NULL,
-        {CheckTable.COL_REASON} TEXT,
-        {CheckTable.COL_DATE} INTEGER NOT NULL,
-        {CheckTable.COL_DEPOSITED} INTEGER DEFAULT 0
+        {CheckTable.COL_MEMO} TEXT,
+        {CheckTable.COL_ISSUED_AT} INTEGER NOT NULL,
+        {CheckTable.COL_IS_CASHED} BOOLEAN DEFAULT FALSE
     );
     """,
     f"""
@@ -125,9 +123,9 @@ TABLES: tuple[str, ...] = (
         {TransactionTable.COL_TYPE} TEXT NOT NULL,
         {TransactionTable.COL_USER_ID} INTEGER NOT NULL,
         {TransactionTable.COL_AMOUNT} INTEGER NOT NULL,
-        {TransactionTable.COL_DATE} INTEGER NOT NULL,
+        {TransactionTable.COL_CREATED_AT} INTEGER NOT NULL,
         {TransactionTable.COL_RECEIVER_ID} INTEGER,
-        {TransactionTable.COL_REASON} TEXT
+        {TransactionTable.COL_MEMO} TEXT
     );
     """,
     f"""
@@ -144,39 +142,7 @@ TABLES: tuple[str, ...] = (
 )
 
 T = TypeVar("T")
-logger = logger_setup(__name__)
-
-
-@final
-class Session:
-    class Types(Enum):
-        GAMBLING = "GAMBLING"
-        MESSAGING = "MESSAGING"
-
-    sessions: dict[tuple[int, Types], Session] = {}  # noqa: RUF012
-
-    def __init__(self, user_id: int, session_type: Types) -> None:
-        self.userId = user_id
-        self.type = session_type
-        self.messages = None
-        Session.sessions[(self.userId, self.type)] = self
-
-    def close(self) -> None:
-        with contextlib.suppress(KeyError):
-            _ = Session.sessions.pop((self.userId, self.type))
-
-    async def collect_message(self, bot: commands.Bot, *, dm_only: bool) -> None:
-        def __check(msg_: discord.Message) -> bool:
-            return (
-                (msg_.author.id == self.userId and not msg_.guild)
-                if dm_only
-                else msg_.author.id == self.userId
-            )
-
-        self.messages: list[discord.Message] | None = []
-        while (self.userId, self.type) in Session.sessions:
-            msg = await bot.wait_for("message", check=__check)
-            self.messages.append(msg)
+logger = setup_logger(__name__)
 
 
 async def _run(func: Callable[..., Awaitable[T]]) -> T:
@@ -193,12 +159,14 @@ async def _run(func: Callable[..., Awaitable[T]]) -> T:
 
     """
     # Connect to database.
-    async with aiosqlite.connect(DATABASE_PATH) as conn:
-        _ = await conn.execute("PRAGMA foreign_keys = ON")
-        _ = await conn.execute("PRAGMA journal_mode = WAL")
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        async with db.execute("PRAGMA foreign_keys = ON"):
+            pass
+        async with db.execute("PRAGMA journal_mode = WAL"):
+            pass
 
         # Run the command.
-        return await func(conn)
+        return await func(db)
 
 
 async def execute(query: str, params: Iterable[Any] | None = None) -> None:
@@ -213,7 +181,8 @@ async def execute(query: str, params: Iterable[Any] | None = None) -> None:
 
     async def _execute(conn: aiosqlite.Connection) -> None:
         try:
-            _ = await conn.execute(query, params)
+            async with conn.execute(query, params):
+                pass
             await conn.commit()
         except Exception:
             await conn.rollback()
@@ -253,7 +222,7 @@ async def fetchone(
 async def fetchall(
     query: str,
     params: Iterable[Any] | None = None,
-) -> Iterable[Row] | None:
+) -> Iterable[Row]:
     """Fetch all rows in aiosqlite.
 
     Args:
@@ -266,12 +235,11 @@ async def fetchall(
 
     """
 
-    async def _fetchall(conn: aiosqlite.Connection) -> Iterable[Row] | None:
+    async def _fetchall(conn: aiosqlite.Connection) -> Iterable[Row]:
         try:
             conn.row_factory = aiosqlite.Row
             async with conn.execute(query, params) as cursor:
-                rows = await cursor.fetchall()
-                return rows or None
+                return await cursor.fetchall()
         except Exception:
             await conn.rollback()
             raise
@@ -289,8 +257,11 @@ async def initialize_tables() -> None:
                 _ = await conn.execute(table)
             # Commit changes.
             await conn.commit()
+
+            logger.info("💾 Database tables have been initialized successfully.")
         except Exception:
             await conn.rollback()
-            raise
+
+            logger.exception("❌ Failed to initialize database tables.")
 
     return await _run(_initialize_tables)

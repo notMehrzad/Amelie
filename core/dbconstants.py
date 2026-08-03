@@ -4,9 +4,9 @@ from __future__ import annotations
 
 __all__ = [
     "AccountTable",
-    "AnonContactTable",
     "AnonSessionTable",
-    "AnonUserTable",
+    "AnonymousContactTable",
+    "AnonymousUserTable",
     "CheckTable",
     "InventoryTable",
     "LotteryTable",
@@ -39,16 +39,16 @@ class AccountTable(_Table):
 
 
 @final
-class AnonContactTable(_Table):
+class AnonymousContactTable(_Table):
     """Anonymous user contact database table."""
 
-    TABLE_NAME = "anon_contacts"
+    TABLE_NAME = "anonymous_contacts"
 
     COL_ID = "id"
+    COL_RECIPIENT_ID = "recipient_id"
     COL_USER_ID = "user_id"
-    COL_CONTACT_ID = "contact_id"
-    COL_CONTACT_ANON_ID = "contact_anon_id"
-    COL_BLOCKED = "blocked"
+    COL_ALIAS = "alias"
+    COL_IS_BLOCKED = "is_blocked"
 
 
 @final
@@ -67,10 +67,10 @@ class AnonSessionTable(_Table):
 
 
 @final
-class AnonUserTable(_Table):
+class AnonymousUserTable(_Table):
     """Anonymous user database table."""
 
-    TABLE_NAME = "anon_users"
+    TABLE_NAME = "anonymous_users"
 
     COL_USER_ID = "user_id"
     COL_PUBLIC_ID = "public_id"
@@ -87,9 +87,9 @@ class CheckTable(_Table):
     COL_SENDER_ID = "sender_id"
     COL_AMOUNT = "amount"
     COL_RECEIVER_ID = "receiver_id"
-    COL_REASON = "reason"
-    COL_DATE = "date"
-    COL_DEPOSITED = "deposited"
+    COL_MEMO = "memo"
+    COL_ISSUED_AT = "issued_at"
+    COL_IS_CASHED = "is_cashed"
 
 
 @final
@@ -138,9 +138,9 @@ class TransactionTable(_Table):
     COL_TYPE = "type"
     COL_USER_ID = "user_id"
     COL_AMOUNT = "amount"
-    COL_DATE = "date"
+    COL_CREATED_AT = "created_at"
     COL_RECEIVER_ID = "receiver_id"
-    COL_REASON = "reason"
+    COL_MEMO = "memo"
 
 
 @final
