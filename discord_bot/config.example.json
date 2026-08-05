@@ -1,0 +1,4 @@
+{
+  "TOKEN": "DISCORD_BOT_TOKEN",
+  "ADMINS": ["DISCORD_ADMINS_ID"]
+}
