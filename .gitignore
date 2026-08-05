@@ -112,8 +112,4 @@ dmypy.json
 tmp/
 temp/
 
-# custom
 stuff/
-telegramRouters/
-telegramMain.py
-arg_parser.py
