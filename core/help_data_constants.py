@@ -6,12 +6,14 @@ __all__ = [
     "ADJUSTBALANCE_HELP",
     "BALANCE_HELP",
     "BLACKJACK_HELP",
+    "CALCULATE_HELP",
     "CHOOSE_HELP",
     "DAILY_HELP",
     "HELP_HELP",
     "LIMITDICE_HELP",
     "PING_HELP",
     "SAY_HELP",
+    "WHISPER_HELP",
 ]
 
 from core.help import HelpData
@@ -101,6 +103,24 @@ BLACKJACK_HELP = HelpData(
     brief="The traditional Blackjack game.",
     usage="<bet_amount[*optional*]>",
     aliases=["bj", "blackj"],
+    is_hidden=False,
+)
+
+CALCULATE_HELP = HelpData(
+    is_enabled=False,
+    name="calculate",
+    category=HelpData.CommandCategory.UTILITY,
+    is_dm_only=False,
+    is_server_only=False,
+    subcommands=None,
+    permissions=None,
+    help_=(
+        "Calculates the given math expression."
+        "\nsupports trigonometric, logarithms and etc."
+    ),
+    brief="Calculates the given math expression.",
+    usage="<math_expression>",
+    aliases=["calc"],
     is_hidden=False,
 )
 
@@ -227,5 +247,21 @@ SAY_HELP = HelpData(
     brief="Says something in a channel.",
     usage='<target channel *or* "here"> <message>',
     aliases=["echo"],
+    is_hidden=False,
+)
+
+WHISPER_HELP = HelpData(
+    is_enabled=True,
+    name="whisper",
+    category=HelpData.CommandCategory.UTILITY,
+    is_dm_only=False,
+    is_server_only=True,
+    subcommands=None,
+    permissions=None,
+    help_="Whispers a message to a member. use this command to talk with a member"
+    " privately inside a server.",
+    brief="Whispers something to a member.",
+    usage="<target> <message>",
+    aliases=["wh"],
     is_hidden=False,
 )
