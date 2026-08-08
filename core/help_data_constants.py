@@ -9,6 +9,7 @@ __all__ = [
     "DAILY_HELP",
     "HELP_HELP",
     "LIMITDICE_HELP",
+    "PING_HELP",
 ]
 
 from core.help import HelpData
@@ -170,5 +171,24 @@ LIMITDICE_HELP = HelpData(
     " can change everything.",
     usage="<target[*optional*]>",
     aliases=["lm"],
+    is_hidden=False,
+)
+
+PING_HELP = HelpData(
+    is_enabled=True,
+    name="ping",
+    category=HelpData.CommandCategory.UTILITY,
+    is_dm_only=False,
+    is_server_only=False,
+    subcommands=None,
+    permissions=None,
+    help_=(
+        "Checks Amelies conenction speed by measuring WebSocket Latency"
+        " (which is the delay between bots server and Discord Gateway) and Bot Latency"
+        " (which is the time it takes Amélie to send a message and recieve a response)."
+    ),
+    brief="Pings Amélie.",
+    usage=None,
+    aliases=None,
     is_hidden=False,
 )
