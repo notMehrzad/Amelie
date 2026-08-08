@@ -1,158 +1,178 @@
+"""say command."""
+
+from __future__ import annotations
+
+__all__ = []
+
+from typing import final
+
 import discord
 from discord import app_commands
 from discord.ext import commands
 
-from cogs.utility.help import Help
+from core.help_data_constants import SAY_HELP
 from core.log_handler import setup_logger
 
 logger = setup_logger(__name__)
 
 
+@final
 class Say(commands.Cog):
-    def __init__(self, bot: commands.Bot):
+    def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
-    Help = Help(
-        category=Help.Category.Utility,
-        is_dm_only=False,
-        is_server_only=False,
-        subcommands=None,
-        permissions=None,
-        help_=(
-            "Says the given message in the desired channel."
-            "But first, it checks if the user(and Amélie herself) have the propper permission to say or send something in the target channel."
-            "\nThis also works in DM and Group channels."
-        ),
-        brief="Says something in a channel.",
-        usage='<target channel *or* "here"> <message>',
-        aliases=["echo"],
-    )
-
-    @commands.command(name="say", **Help.to_kwargs)
+    @commands.command(name="say", **SAY_HELP.kwargs)
     async def say(
         self,
         ctx: commands.Context[commands.Bot],
-        channel: (
-            discord.abc.GuildChannel
-            | discord.Thread
-            | discord.abc.PrivateChannel
-            | str
-            | None
-        ),
+        channel: discord.abc.MessageableChannel | str | None,
         *,
         message: str | None,
-    ):
-        # if user doesn't enter a channel
-        if not channel:
-            return await ctx.reply(
-                "You must enter the channel you want to say something in. (or *here* to choose the current channel)"
+    ) -> None:
+        # Raise an error if user enters no channel.
+        if channel is None:
+            await ctx.reply(
+                "You must enter the channel you want to say something in."
+                " (or *here* to choose the current channel)",
             )
+            return
 
-        # if user entes an invalid channel
+        # Raise an error if user enters a string channel and it's not `here`.
         if isinstance(channel, str):
             if channel.lower().strip() == "here":
-                targetChannel = ctx.channel
+                target_channel = ctx.channel
+
             else:
-                return await ctx.reply("Enter a valid channel.")
+                await ctx.reply("Enter a valid channel.")
+                return
+
         else:
-            targetChannel = channel
+            target_channel = channel
 
-        if not isinstance(targetChannel, discord.abc.Messageable):
-            return await ctx.reply("The given channel is not messageable.")
-
-        # if target channel is a server channel, checks permissions
+        # If both user and bot are members of the guild.
         if isinstance(ctx.author, discord.Member) and isinstance(
-            ctx.me, discord.Member
+            ctx.me,
+            discord.Member,
         ):
-            # if user has no permission to send message in the target channel
-            if not targetChannel.permissions_for(ctx.author).send_messages:
-                return await ctx.reply(
-                    "You have no permission to *say and send* messages in this channel."
+            # Raise an error if user doesn't have the permission to send messages.
+            if not target_channel.permissions_for(ctx.author).send_messages:
+                await ctx.reply(
+                    "You have no permission to *say and send*"
+                    " messages in this channel.",
                 )
+                return
 
-            # if the bot has no permission to send message in the target channel
-            if not targetChannel.permissions_for(ctx.me).send_messages:
-                return await ctx.reply(
-                    "I have no permission to *say and send* messages in this channel."
+            # Raise an error if bot doesn't have the permission to send messages.
+            if not target_channel.permissions_for(ctx.me).send_messages:
+                await ctx.reply(
+                    "I have no permission to *say and send* messages in this channel.",
                 )
+                return
 
-        # if user doesn't enter message
-        if not message:
-            return await ctx.reply("You must write your text to be said.")
+        # Raise an error if user enters no message.
+        if message is None:
+            await ctx.reply("You must write your text to be said.")
+            return
 
-        await targetChannel.send(message)  # sends the message in the channel
+        # Send the message.
+        await target_channel.send(message)
 
     @say.error
     async def say_error(
-        self, ctx: commands.Context[commands.Bot], error: commands.CommandError
-    ):
-        logger.exception(f"❌ something went wrong with say command:")
+        self,
+        ctx: commands.Context[commands.Bot],
+        error: commands.CommandError,
+    ) -> None:
+        logger.error("❌ Something went wrong with say command:", exc_info=error)
         await ctx.reply("something went wrong with **say**.")
 
     # say slash command
-    @app_commands.command(name="say", description=Help.brief, extras=Help.extras)
-    @app_commands.describe(
-        message="The message to be said.",
-        channel="The channel you want to say something in.",
-        visible_slash_command="Whether it should be visible if it was a slash command or not.",
+    @app_commands.command(
+        name="say",
+        description=SAY_HELP.brief,
+        extras=SAY_HELP.extras,
     )
-    async def slashSay(
+    @app_commands.describe(
+        message="Message to be said.",
+        channel="Channel to be said in.",
+        visible_slash_command="Whether it should be visible if it was a slash command.",
+    )
+    async def slash_say(
         self,
         interaction: discord.Interaction,
         message: str,
-        channel: discord.abc.GuildChannel | discord.Thread | None = None,
+        channel: discord.interactions.InteractionChannel | None = None,
+        *,
         visible_slash_command: bool = True,
-    ):
-        targetChannel = interaction.channel if not channel else channel
+    ) -> None:
+        # Raise an error if user enters no channel.
+        if channel is None:
+            channel = interaction.channel
 
-        if not isinstance(targetChannel, discord.abc.Messageable):
-            return await interaction.response.send_message(
-                "The given channel is not messageable.", ephemeral=True
+        # Raise an error if channel isn't messageable.
+        if not isinstance(channel, discord.abc.Messageable):
+            await interaction.response.send_message(
+                "The given channel is not messageable.",
+                ephemeral=True,
             )
+            return
 
-        # if target channel is a server channel, checks permissions
-        if isinstance(interaction.user, discord.Member) and interaction.guild:
-            # if user has no permission to send message in the target channel
-            if not targetChannel.permissions_for(interaction.user).send_messages:
-                return await interaction.response.send_message(
-                    "You have no permission to *say and send* messages in this channel.",
+        # If both user and bot are members of the guild.
+        if isinstance(interaction.user, discord.Member) and isinstance(
+            interaction.client,
+            discord.Member,
+        ):
+            # Raise an error if user doesn't have the permission to send messages.
+            if not channel.permissions_for(interaction.user).send_messages:
+                await interaction.response.send_message(
+                    "You have no permission to *say and send*"
+                    " messages in this channel.",
                     ephemeral=True,
                 )
+                return
 
-            # if the bot has no permission to send message in the target channel
-            if not targetChannel.permissions_for(interaction.guild.me).send_messages:
-                return await interaction.response.send_message(
+            # Raise an error if bot doesn't have the permission to send messages.
+            if not channel.permissions_for(interaction.client).send_messages:
+                await interaction.response.send_message(
                     "I have no permission to *say and send* messages in this channel.",
                     ephemeral=True,
                 )
+                return
 
-        # sends the message in the current channel
-        if targetChannel == interaction.channel:
+        # Send the message.
+        if channel == interaction.channel:
             if visible_slash_command:
                 await interaction.response.send_message(message)
+                await interaction.followup.send("Sent!", ephemeral=True)
+
             else:
                 await interaction.response.defer(ephemeral=True)
-                await targetChannel.send(message)
-                await interaction.followup.send("Sent.")
+                await channel.send(message)
+                await interaction.followup.send("Sent!")
 
-        # sends the message in the target channel
         else:
             await interaction.response.defer(ephemeral=True)
-            await targetChannel.send(message)
-            await interaction.followup.send("Sent.")
+            await channel.send(message)
+            await interaction.followup.send("Sent!")
 
-    @slashSay.error
-    async def slashSay_error(self, interaction: discord.Interaction, error: Exception):
-        logger.exception(f"❌ something went wrong with /say command:")
+    @slash_say.error
+    async def slash_say_error(
+        self,
+        interaction: discord.Interaction,
+        error: app_commands.AppCommandError,
+    ) -> None:
+        logger.error("❌ Something went wrong with /say command:", exc_info=error)
         try:
             await interaction.response.send_message(
-                "something went wrong with **say**.", ephemeral=True
+                "Something went wrong with **say**.",
+                ephemeral=True,
             )
         except discord.InteractionResponded:
             await interaction.followup.send(
-                "something went wrong with **say**.", ephemeral=True
+                "Something went wrong with **say**.",
+                ephemeral=True,
             )
 
 
-async def setup(bot: commands.Bot):
+async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Say(bot))

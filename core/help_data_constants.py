@@ -10,6 +10,7 @@ __all__ = [
     "HELP_HELP",
     "LIMITDICE_HELP",
     "PING_HELP",
+    "SAY_HELP",
 ]
 
 from core.help import HelpData
@@ -190,5 +191,25 @@ PING_HELP = HelpData(
     brief="Pings Amélie.",
     usage=None,
     aliases=None,
+    is_hidden=False,
+)
+
+SAY_HELP = HelpData(
+    is_enabled=True,
+    name="say",
+    category=HelpData.CommandCategory.UTILITY,
+    is_dm_only=False,
+    is_server_only=False,
+    subcommands=None,
+    permissions=None,
+    help_=(
+        "Says the given message in the desired channel. But first, it checks if the"
+        " user(and Amélie herself) have the propper permission to say or send something"
+        " in the target channel."
+        "\nThis also works in DM and Group channels."
+    ),
+    brief="Says something in a channel.",
+    usage='<target channel *or* "here"> <message>',
+    aliases=["echo"],
     is_hidden=False,
 )
