@@ -6,6 +6,7 @@ __all__ = [
     "ADJUSTBALANCE_HELP",
     "BALANCE_HELP",
     "BLACKJACK_HELP",
+    "CHOOSE_HELP",
     "DAILY_HELP",
     "HELP_HELP",
     "LIMITDICE_HELP",
@@ -100,6 +101,21 @@ BLACKJACK_HELP = HelpData(
     brief="The traditional Blackjack game.",
     usage="<bet_amount[*optional*]>",
     aliases=["bj", "blackj"],
+    is_hidden=False,
+)
+
+CHOOSE_HELP = HelpData(
+    is_enabled=True,
+    name="choose",
+    category=HelpData.CommandCategory.UTILITY,
+    is_dm_only=False,
+    is_server_only=False,
+    subcommands=None,
+    permissions=None,
+    help_=None,
+    brief="Chooses one option between given choices",
+    usage='<count[*optional*]> <choices(separated with "|")>',
+    aliases=None,
     is_hidden=False,
 )
 

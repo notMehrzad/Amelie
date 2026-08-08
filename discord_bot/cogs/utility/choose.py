@@ -1,115 +1,133 @@
+"""choose command."""
+
+from __future__ import annotations
+
+__all__ = []
+
 import random
+from typing import final
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 
-from cogs.utility.help import Help
+from core.help_data_constants import CHOOSE_HELP
 from core.log_handler import setup_logger
+
+MIN_OPTIONS = 2
 
 logger = setup_logger(__name__)
 
 
+@final
 class Choose(commands.Cog):
-    def __init__(self, bot: commands.Bot):
+    def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
-    Help = Help(
-        category=Help.Category.Utility,
-        is_dm_only=False,
-        is_server_only=False,
-        subcommands=None,
-        permissions=None,
-        help_=None,
-        brief="Chooses one option between given choices",
-        usage='<count[*optional*]> <choices(separated with "|")>',
-        aliases=None,
-    )
-
-    @commands.command(name="choose", **Help.to_kwargs)
+    @commands.command(name="choose", **CHOOSE_HELP.kwargs)
     async def choose(
         self,
         ctx: commands.Context[commands.Bot],
         count: int = 1,
         *,
-        choices: str | None,
-    ):
-        # if user doesn't enter any options
-        if not choices:
-            return await ctx.reply(
-                'You must enter at least two choices separated with "|".'
+        raw_options: str | None,
+    ) -> None:
+        # Raise an error if user enters no options.
+        if raw_options is None:
+            await ctx.reply('You must enter your options separated with "|".')
+            return
+
+        options = [
+            option.strip() for option in raw_options.split("|") if option.strip()
+        ]
+
+        # Raise an error if the number of options is less than 2.
+        if len(options) < MIN_OPTIONS:
+            await ctx.reply('You must enter at least two options separated with "|".')
+            return
+
+        # Raise an error if user wants to choose more than number of options.
+        if count >= len(options):
+            await ctx.reply(
+                "You can't choose greater than or equal to the number of options.",
             )
+            return
 
-        choicesList = [
-            c.strip() for c in choices.split("|") if c.strip()
-        ]  # fetches the options
+        # Choose a random option.
+        choice = random.sample(options, count)
 
-        # if user doesn't enter at least two options to choose
-        if len(choicesList) < 2:
-            return await ctx.reply(
-                'You must enter at least two choices separated with "|".'
-            )
-
-        # if user wants to choose more than given options
-        if count >= len(choicesList):
-            return await ctx.reply(
-                "You can't choose greater than or equal to the number of choices."
-            )
-
-        choice = random.sample(choicesList, count)  # makes a choice
-        await ctx.reply(f"I'd go with: {'and'.join(choice)}")  # sends the result
+        # Send the result.
+        await ctx.reply(f"I'd go with: {'and'.join(choice)}")
 
     @choose.error
-    async def choose_error(self, ctx: commands.Context[commands.Bot], error: Exception):
-        logger.exception(f"❌ something went wrong with choose command:")
+    async def choose_error(
+        self,
+        ctx: commands.Context[commands.Bot],
+        error: commands.CommandError,
+    ) -> None:
+        logger.error("❌ Something went wrong with choose command:", exc_info=error)
         await ctx.reply("something went wrong with **choose**.")
 
     # choose slash command
-    @app_commands.command(name="choose", description=Help.brief, extras=Help.extras)
-    @app_commands.describe(
-        choices='The choices to choose from, separated with "|".',
-        count="The number of choices to make.",
+    @app_commands.command(
+        name="choose",
+        description=CHOOSE_HELP.brief,
+        extras=CHOOSE_HELP.extras,
     )
-    async def slashChoose(
-        self, interaction: discord.Interaction, choices: str, count: int = 1
-    ):
-        choicesList = [
-            c.strip() for c in choices.split("|") if c.strip()
-        ]  # fetches the options
+    @app_commands.describe(
+        options='Options to choose from, separated with " | ".',
+        count="Number of choices to make.",
+    )
+    async def slash_choose(
+        self,
+        interaction: discord.Interaction,
+        options: str,
+        count: int = 1,
+    ) -> None:
+        options_list = [
+            option.strip() for option in options.split("|") if option.strip()
+        ]
 
-        # if user doesn't enter at least two options to choose
-        if len(choicesList) < 2:
-            return await interaction.response.send_message(
-                'You must enter at least two choices separated with "|".',
+        # Raise an error if the number of options is less than 2.
+        if len(options_list) < MIN_OPTIONS:
+            await interaction.response.send_message(
+                'You must enter at least two options separated with "|".',
                 ephemeral=True,
             )
+            return
 
-        # if user wants to choose more than given options
-        if count >= len(choicesList):
-            return await interaction.response.send_message(
-                "You can't choose greater than or equal to the number of choices.",
+        # Raise an error if user wants to choose more than number of options.
+        if count >= len(options_list):
+            await interaction.response.send_message(
+                "You can't choose greater than or equal to the number of options.",
                 ephemeral=True,
             )
+            return
 
-        choice = random.sample(choicesList, count)  # makes a choice
-        await interaction.response.send_message(
-            f"I'd go with: {'and'.join(choice)}"
-        )  # sends the result
+        # Choose a random option.
+        choice = random.sample(options_list, count)
 
-    @slashChoose.error
-    async def slashChoose_error(
-        self, interaction: discord.Interaction, error: Exception
-    ):
-        logger.exception(f"❌ something went wrong with /choose command:")
+        # Send the result.
+        await interaction.response.send_message(f"I'd go with: {'and'.join(choice)}")
+
+    @slash_choose.error
+    async def slash_choose_error(
+        self,
+        interaction: discord.Interaction,
+        error: app_commands.AppCommandError,
+    ) -> None:
+        logger.error("❌ Something went wrong with /choose command:", exc_info=error)
         try:
             await interaction.response.send_message(
-                "something went wrong with **choose**.", ephemeral=True
+                "Something went wrong with **choose**.",
+                ephemeral=True,
             )
         except discord.InteractionResponded:
             await interaction.followup.send(
-                "something went wrong with **choose**.", ephemeral=True
+                "Something went wrong with **choose**.",
+                ephemeral=True,
             )
 
 
-async def setup(bot: commands.Bot):
+async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Choose(bot))
