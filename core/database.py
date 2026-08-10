@@ -169,7 +169,7 @@ async def _run(func: Callable[..., Awaitable[T]]) -> T:
         return await func(db)
 
 
-async def execute(query: str, params: Iterable[Any] | None = None) -> None:
+async def execute(query: str, params: Iterable[Any] | None = None) -> aiosqlite.Cursor:
     """Execute a SQL query in aiosqlite.
 
     Args:
@@ -179,10 +179,10 @@ async def execute(query: str, params: Iterable[Any] | None = None) -> None:
 
     """
 
-    async def _execute(conn: aiosqlite.Connection) -> None:
+    async def _execute(conn: aiosqlite.Connection) -> aiosqlite.Cursor:
         try:
-            async with conn.execute(query, params):
-                pass
+            async with conn.execute(query, params) as cursor:
+                return cursor
             await conn.commit()
         except Exception:
             await conn.rollback()

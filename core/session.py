@@ -9,28 +9,6 @@ from typing import TYPE_CHECKING, ClassVar, final
 
 if TYPE_CHECKING:
     import discord
-    from discord.ext import commands
-
-
-# Define exception classes.
-class SessionError(Exception):
-    """Common base class for all session errors."""
-
-
-@final
-class InvalidSessionTypeError(SessionError):
-    """Raised when trying to collect messages whitin an invalid session type."""
-
-    def __init__(self) -> None:
-        super().__init__("Invalid session type for message collecting.")
-
-
-@final
-class SessionIsEndedError(SessionError):
-    """Raised when trying to collect messages whitin an ended session type."""
-
-    def __init__(self) -> None:
-        super().__init__("Can't collect messages for an ended session.")
 
 
 @final
@@ -58,34 +36,6 @@ class Session:
         self.messages: list[discord.Message] = []
 
         Session.sessions[(self.user_id, self.type)] = self
-
-    async def collect_message(self, bot: commands.Bot, *, dm_only: bool) -> None:
-        """Start collecting discord messages.
-
-        Args:
-            bot (commands.Bot): Bot instance.
-            dm_only (bool): Whether it should collect messages only from DM or not.
-
-        """
-        # Raise an error if trying to collect messages for a non messaging session type.
-        if self.type.value != Session.SessionTypes.MESSAGING.value:
-            raise InvalidSessionTypeError
-
-        # Raise an error if trying to collect message for an ended session.
-        if (self.user_id, self.type) not in Session.sessions:
-            raise SessionIsEndedError
-
-        def __check(msg_: discord.Message) -> bool:
-            return (
-                (msg_.author.id == self.user_id and not msg_.guild)
-                if dm_only
-                else msg_.author.id == self.user_id
-            )
-
-        # Collect messages.
-        while (self.user_id, self.type) in Session.sessions:
-            msg = await bot.wait_for("message", check=__check)
-            self.messages.append(msg)
 
     def close(self) -> list[discord.Message] | None:
         """Close the session.

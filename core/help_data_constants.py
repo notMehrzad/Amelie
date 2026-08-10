@@ -13,6 +13,7 @@ __all__ = [
     "LIMITDICE_HELP",
     "PING_HELP",
     "SAY_HELP",
+    "TICKET_HELP",
     "WHISPER_HELP",
 ]
 
@@ -247,6 +248,28 @@ SAY_HELP = HelpData(
     brief="Says something in a channel.",
     usage='<target channel *or* "here"> <message>',
     aliases=["echo"],
+    is_hidden=False,
+)
+
+TICKET_HELP = HelpData(
+    is_enabled=True,
+    name="ticket",
+    category=HelpData.CommandCategory.UTILITY,
+    is_dm_only=True,
+    is_server_only=False,
+    subcommands=None,
+    permissions=None,
+    help_=(
+        "Opens a ticketing session to contact the staff."
+        "\n\nPlease try to include a short subject, a clear description of the issue,"
+        " when it happened, and any relevant screenshots or files."
+        "\nYou may send multiple messages during the session."
+        " Press **done** when finished to submit the ticket."
+        "\n\nYour username and user ID will be included automatically for follow-up."
+    ),
+    brief="Opens a support ticket.",
+    usage="<subject>",
+    aliases=None,
     is_hidden=False,
 )
 
