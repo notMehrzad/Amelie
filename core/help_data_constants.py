@@ -8,6 +8,7 @@ __all__ = [
     "BLACKJACK_HELP",
     "CALCULATE_HELP",
     "CHOOSE_HELP",
+    "COINFLIP_HELP",
     "DAILY_HELP",
     "HELP_HELP",
     "LIMITDICE_HELP",
@@ -137,6 +138,21 @@ CHOOSE_HELP = HelpData(
     brief="Chooses one option between given choices",
     usage='<count[*optional*]> <choices(separated with "|")>',
     aliases=None,
+    is_hidden=False,
+)
+
+COINFLIP_HELP = HelpData(
+    is_enabled=True,
+    name="coinflip",
+    category=HelpData.CommandCategory.GAMES,
+    is_dm_only=False,
+    is_server_only=False,
+    subcommands=None,
+    permissions=None,
+    help_=None,
+    brief="Flips a coin.",
+    usage=None,
+    aliases=["cf", "coinf"],
     is_hidden=False,
 )
 
