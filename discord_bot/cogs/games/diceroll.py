@@ -1,136 +1,171 @@
-import random
-import re
+"""rolldice command."""
+
+from __future__ import annotations
+
+__all__ = []
+
+from typing import final
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 
-from cogs.utility.help import Help
+from core.dice import (
+    MAX_DICE_COUNT,
+    MAX_DIE_SIDES,
+    MIN_DIE_SIDES,
+    Dice,
+    parse_dice_expression,
+)
+from core.help_data_constants import ROLLDICE_HELP
 from core.log_handler import setup_logger
 
 logger = setup_logger(__name__)
 
-maxDiceSide = 1000  # the maximum number of dice sides
-maxDiceCount = 100  # the maximum number of dice to roll at once
 
-
-def dice_roll(dice: str):
-    dice = dice.strip().lower()
-
-    match = re.fullmatch(r"(\d*)d([1-9]\d*)", dice)  # trys to regex the entered format
-
-    # if the format is NdS
-    if match:
-        countStr, sideStr = match.groups()  # extracts the number of dice and sides
-        count = int(countStr) if countStr else 1
-        sides = int(sideStr)
-
-    # if the format is dS
-    elif dice.isdigit():
-        count = 1
-        sides = int(dice)
-
-    # invalid format
-    else:
-        raise ValueError("Invalid format. Use d6, 2d6, or 6")
-
-    # if entered count is less than 1
-    if count < 1:
-        raise ValueError("You must roll at least one die")
-
-    # if entered count is greater than the allowed number
-    if count > maxDiceCount:
-        raise ValueError(f"Cannot roll more than {maxDiceCount} dice at once.")
-
-    # if entered side is less than 2
-    if sides < 2:
-        raise ValueError("Dice side must be at least 2.")
-
-    # if entered side is greater than the allowed number
-    if sides > maxDiceSide:
-        raise ValueError(f"Dice side cannot be greater than {maxDiceSide}.")
-
-    rolls = [random.randint(1, sides) for _ in range(count)]  # rolls the dice
-    total = sum(rolls)  # sums the results
-
-    return rolls, total, count, sides
-
-
-class DiceRoll(commands.Cog):
-    def __init__(self, bot: commands.Bot):
+@final
+class RollDice(commands.Cog):
+    def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
-    Help = Help(
-        category=Help.Category.Games,
-        is_dm_only=False,
-        is_server_only=False,
-        subcommands=None,
-        permissions=None,
-        help_=(
-            "Rolls dice using standard notation."
-            "\n\nDice formats:"
-            '\n• "6" → rolls 1d6'
-            '\n• "d6" → rolls 1d6'
-            '\n• "2d6" → rolls 2d6'
-        ),
-        brief="Rolls dice.",
-        usage="<dice[*optional*]>",
-        aliases=["dr", "dicer", "droll", "dice", "roll"],
+    @commands.command(name=ROLLDICE_HELP.name, **ROLLDICE_HELP.kwargs)
+    async def rolldice(
+        self,
+        ctx: commands.Context[commands.Bot],
+        dice_expression: str = "1d6",
+    ) -> None:
+        # Parse expression.
+        parsed_expression = parse_dice_expression(dice_expression)
+        # Raise an error if entered expression is invalid and can't be parsed.
+        if parsed_expression is None:
+            await ctx.reply("You must enter a valid dice expression like `3d20`.")
+            return
+        count, sides = parsed_expression
+
+        # Raise an error if count is less than minimum dice count.
+        if count < 1:
+            await ctx.reply("You must roll at least 1 die.")
+            return
+        # Raise an error if count is more than maximum dice count.
+        if count > MAX_DICE_COUNT:
+            await ctx.reply(f"The maximum number of dice to roll is {MAX_DICE_COUNT}")
+            return
+
+        # Raise an error if side is less than minimum die side.
+        if sides < MIN_DIE_SIDES:
+            await ctx.reply(f"A die can not have less than {MIN_DIE_SIDES} sides.")
+            return
+        # Raise an error if sides are more than maximum die sides.
+        if sides > MAX_DIE_SIDES:
+            await ctx.reply(f"Maximum number of die sides is {MAX_DIE_SIDES}.")
+            return
+
+        # Creat the die.
+        die = Dice(sides)
+
+        # Roll dice and save the result.
+        result, rolls = die.roll(count)
+
+        # Send result.
+        await ctx.reply(
+            f"🎲 **{count}d{sides}**"
+            f"\nRolls: {', '.join(map(str, rolls))}"
+            f"\nTotal: **{result}**",
+        )
+
+    @rolldice.error
+    async def rolldice_error(
+        self,
+        ctx: commands.Context[commands.Bot],
+        error: commands.CommandError,
+    ) -> None:
+        logger.error("❌ Something went wrong with rolldice command:", exc_info=error)
+        await ctx.reply("Something went wrong with **rolldice**.")
+
+    # rolldice slash command
+    @app_commands.command(
+        name=ROLLDICE_HELP.name,
+        description=ROLLDICE_HELP.brief,
+        extras=ROLLDICE_HELP.extras,
     )
-
-    @commands.command(name="diceroll", **Help.to_kwargs)
-    async def diceroll(self, ctx: commands.Context[commands.Bot], dice: str = "6"):
-        try:
-            rolls, total, count, sides = dice_roll(dice)
-
-            # sends the result
-            await ctx.reply(
-                f"🎲 **{count}d{sides}**\n"
-                f"Rolls: {', '.join(map(str, rolls))}\n"
-                f"Total: **{total}**"
-            )
-
-        except ValueError as e:
-            await ctx.reply(f"{e}")
-
-    @diceroll.error
-    async def diceroll_error(
-        self, ctx: commands.Context[commands.Bot], error: Exception
-    ):
-        logger.exception(f"❌ something went wrong with diceroll command:")
-        await ctx.reply("something went wrong with **diceroll**.")
-
-    # diceroll slash command
-    @app_commands.command(name="diceroll", description=Help.brief, extras=Help.extras)
     @app_commands.describe(dice="The dice to roll. Format: d6, 2d6, or 6")
-    async def slashDiceroll(self, interaction: discord.Interaction, dice: str = "6"):
-        try:
-            rolls, total, count, sides = dice_roll(dice)
-
-            # sends the result
+    async def slash_rolldice(
+        self,
+        interaction: discord.Interaction,
+        dice: str = "1d6",
+    ) -> None:
+        # Parse expression.
+        parsed_expression = parse_dice_expression(dice)
+        # Raise an error if entered expression is invalid and can't be parsed.
+        if parsed_expression is None:
             await interaction.response.send_message(
-                f"🎲 **{count}d{sides}**\n"
-                f"Rolls: {', '.join(map(str, rolls))}\n"
-                f"Total: **{total}**"
+                "You must enter a valid dice expression like `3d20`.",
+                ephemeral=True,
             )
+            return
+        count, sides = parsed_expression
 
-        except ValueError as e:
-            await interaction.response.send_message(f"{e}", ephemeral=True)
+        # Raise an error if count is less than minimum dice count.
+        if count < 1:
+            await interaction.response.send_message(
+                "You must roll at least 1 die.",
+                ephemeral=True,
+            )
+            return
+        # Raise an error if count is more than maximum dice count.
+        if count > MAX_DICE_COUNT:
+            await interaction.response.send_message(
+                f"The maximum number of dice to roll is {MAX_DICE_COUNT}",
+                ephemeral=True,
+            )
+            return
 
-    @slashDiceroll.error
-    async def slashDiceroll_error(
-        self, interaction: discord.Interaction, error: Exception
-    ):
-        logger.exception(f"❌ something went wrong with /diceroll command:")
+        # Raise an error if side is less than minimum die side.
+        if sides < MIN_DIE_SIDES:
+            await interaction.response.send_message(
+                f"A die can not have less than {MIN_DIE_SIDES} sides.",
+                ephemeral=True,
+            )
+            return
+        # Raise an error if sides are more than maximum die sides.
+        if sides > MAX_DIE_SIDES:
+            await interaction.response.send_message(
+                f"Maximum number of die sides is {MAX_DIE_SIDES}.",
+                ephemeral=True,
+            )
+            return
+
+        # Creat the die.
+        die = Dice(sides)
+
+        # Roll dice and save the result.
+        result, rolls = die.roll(count)
+
+        # Send result.
+        await interaction.response.send_message(
+            f"🎲 **{count}d{sides}**"
+            f"\nRolls: {', '.join(map(str, rolls))}"
+            f"\nTotal: **{result}**",
+        )
+
+    @slash_rolldice.error
+    async def slash_rolldice_error(
+        self,
+        interaction: discord.Interaction,
+        error: app_commands.AppCommandError,
+    ) -> None:
+        logger.error("❌ Something went wrong with /rolldice command:", exc_info=error)
         try:
             await interaction.response.send_message(
-                "something went wrong with **diceroll**.", ephemeral=True
+                "Something went wrong with **rolldice**.",
+                ephemeral=True,
             )
         except discord.InteractionResponded:
             await interaction.followup.send(
-                "something went wrong with **diceroll**.", ephemeral=True
+                "Something went wrong with **rolldice**.",
+                ephemeral=True,
             )
 
 
-async def setup(bot: commands.Bot):
-    await bot.add_cog(DiceRoll(bot))
+async def setup(bot: commands.Bot) -> None:
+    await bot.add_cog(RollDice(bot))

@@ -8,17 +8,19 @@ __all__ = [
     "BLACKJACK_HELP",
     "CALCULATE_HELP",
     "CHOOSE_HELP",
-    "COINFLIP_HELP",
     "DAILY_HELP",
+    "FLIPCOIN_HELP",
     "HELP_HELP",
     "LIMITDICE_HELP",
     "PING_HELP",
+    "ROLLDICE_HELP",
     "SAY_HELP",
     "TICKET_HELP",
     "WHISPER_HELP",
 ]
 
 from core.help import HelpData
+
 
 ADJUSTBALANCE_HELP = HelpData(
     is_enabled=False,
@@ -141,21 +143,6 @@ CHOOSE_HELP = HelpData(
     is_hidden=False,
 )
 
-COINFLIP_HELP = HelpData(
-    is_enabled=True,
-    name="coinflip",
-    category=HelpData.CommandCategory.GAMES,
-    is_dm_only=False,
-    is_server_only=False,
-    subcommands=None,
-    permissions=None,
-    help_=None,
-    brief="Flips a coin.",
-    usage=None,
-    aliases=["cf", "coinf"],
-    is_hidden=False,
-)
-
 DAILY_HELP = HelpData(
     is_enabled=True,
     name="daily",
@@ -168,6 +155,21 @@ DAILY_HELP = HelpData(
     brief="Claims the Daily Reward for the user.",
     usage=None,
     aliases=["d"],
+    is_hidden=False,
+)
+
+FLIPCOIN_HELP = HelpData(
+    is_enabled=True,
+    name="flipcoin",
+    category=HelpData.CommandCategory.GAMES,
+    is_dm_only=False,
+    is_server_only=False,
+    subcommands=None,
+    permissions=None,
+    help_=None,
+    brief="Flips a coin.",
+    usage=None,
+    aliases=["fc", "coinflip", "cf"],
     is_hidden=False,
 )
 
@@ -244,6 +246,27 @@ PING_HELP = HelpData(
     brief="Pings Amélie.",
     usage=None,
     aliases=None,
+    is_hidden=False,
+)
+
+ROLLDICE_HELP = HelpData(
+    is_enabled=True,
+    name="rolldice",
+    category=HelpData.CommandCategory.GAMES,
+    is_dm_only=False,
+    is_server_only=False,
+    subcommands=None,
+    permissions=None,
+    help_=(
+        "Rolls dice using standard notation."
+        "\n\nDice formats:"
+        '\n• "6" → rolls 1d6'
+        '\n• "d6" → rolls 1d6'
+        '\n• "2d6" → rolls 2d6'
+    ),
+    brief="Roll dice.",
+    usage="<dice[*optional*]>",
+    aliases=["rd", "diceroll", "dr", "dicer", "droll"],
     is_hidden=False,
 )
 
