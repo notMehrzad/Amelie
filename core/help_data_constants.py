@@ -14,13 +14,13 @@ __all__ = [
     "LIMITDICE_HELP",
     "PING_HELP",
     "ROLLDICE_HELP",
+    "RPS_HELP",
     "SAY_HELP",
     "TICKET_HELP",
     "WHISPER_HELP",
 ]
 
 from core.help import HelpData
-
 
 ADJUSTBALANCE_HELP = HelpData(
     is_enabled=False,
@@ -267,6 +267,26 @@ ROLLDICE_HELP = HelpData(
     brief="Roll dice.",
     usage="<dice[*optional*]>",
     aliases=["rd", "diceroll", "dr", "dicer", "droll"],
+    is_hidden=False,
+)
+
+RPS_HELP = HelpData(
+    is_enabled=True,
+    name="rps",
+    category=HelpData.CommandCategory.GAMES,
+    is_dm_only=False,
+    is_server_only=False,
+    subcommands=None,
+    permissions=None,
+    help_=(
+        "A game between two people. Both players play one of three options: Rock, Paper"
+        " or Scissors."
+        "\n\nA Rock beats Scissors, a Paper beats Rock, a Scissors beats Paper."
+        "\n\nYou can only play with Amélie herself if you run this game in her dm."
+    ),
+    brief="Traditional *Rock, Paper, Scissors* game.",
+    usage="<target[*optional*]>",
+    aliases=["rockpaperscissors"],
     is_hidden=False,
 )
 
