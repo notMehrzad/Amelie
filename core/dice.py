@@ -1,3 +1,5 @@
+"""Contains logic core for dice rolling."""
+
 from __future__ import annotations
 
 __all__ = [
@@ -108,7 +110,7 @@ def parse_dice_expression(expression: str) -> tuple[int, int] | None:
         return 1, int(expression)
 
     # Regex expression.
-    match = re.fullmatch(r"(\d*)d([1-9]\d*)", expression)
+    match = re.match(r"^(\d+)?d(\d+)?$", expression)
     # Raise an error if expression is invalid.
     if match is None:
         return None

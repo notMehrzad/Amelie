@@ -60,18 +60,23 @@ class RollDice(commands.Cog):
             await ctx.reply(f"Maximum number of die sides is {MAX_DIE_SIDES}.")
             return
 
-        # Creat the die.
+        # Create the die.
         die = Dice(sides)
 
         # Roll dice and save the result.
         result, rolls = die.roll(count)
 
+        if count == 1:
+            result_string = f"🎲 **{count}d{sides}** -> **{result}**"
+        else:
+            result_string = (
+                f"🎲 **{count}d{sides}** -> **{result}**"
+                f"\n\nRolls: {', '.join(map(str, rolls))}"
+                f"\nTotal: **{result}**"
+            )
+
         # Send result.
-        await ctx.reply(
-            f"🎲 **{count}d{sides}**"
-            f"\nRolls: {', '.join(map(str, rolls))}"
-            f"\nTotal: **{result}**",
-        )
+        await ctx.reply(result_string)
 
     @rolldice.error
     async def rolldice_error(
@@ -141,12 +146,17 @@ class RollDice(commands.Cog):
         # Roll dice and save the result.
         result, rolls = die.roll(count)
 
+        if count == 1:
+            result_string = f"🎲 **{count}d{sides}** -> **{result}**"
+        else:
+            result_string = (
+                f"🎲 **{count}d{sides}** -> **{result}**"
+                f"\n\nRolls: {', '.join(map(str, rolls))}"
+                f"\nTotal: **{result}**"
+            )
+
         # Send result.
-        await interaction.response.send_message(
-            f"🎲 **{count}d{sides}**"
-            f"\nRolls: {', '.join(map(str, rolls))}"
-            f"\nTotal: **{result}**",
-        )
+        await interaction.response.send_message(result_string)
 
     @slash_rolldice.error
     async def slash_rolldice_error(
