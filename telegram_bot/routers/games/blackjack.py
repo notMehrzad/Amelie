@@ -12,8 +12,8 @@ from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.filters.callback_data import CallbackData
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-
 from arg_parser import parse_args
+
 from core.bank import CURRENCY_NAME, BankAccount, get_bank_account
 from core.blackjack import (
     DEALER_STAND_VALUE,
@@ -23,16 +23,12 @@ from core.blackjack import (
     generate_deck,
 )
 from core.help_data_constants import BLACKJACK_HELP
-from core.log_handler import setup_logger
 from core.session import Session, get_session
 
 if TYPE_CHECKING:
     from aiogram.types import CallbackQuery, Message, User
 
 ROUTER = Router(name=__name__)
-
-
-logger = setup_logger(__name__)
 
 
 @ROUTER.message(Command(BLACKJACK_HELP.name, *BLACKJACK_HELP.aliases, ignore_case=True))
