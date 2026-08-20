@@ -30,6 +30,7 @@ BOT = commands.Bot(
     intents=discord.Intents.all(),
     case_insensitive=True,
 )  # Bot instance
+CONFIG_DIR = Path("discord_bot") / "config.json"
 
 
 class _Config(TypedDict):
@@ -38,7 +39,7 @@ class _Config(TypedDict):
 
 
 # Read the stored token from config.json file.
-with Path("config.json").open("r") as file:
+with CONFIG_DIR.open("r") as file:
     CONFIG: _Config = cast("_Config", json.load(file))
 
 logger = setup_logger(__name__)
@@ -49,7 +50,7 @@ async def _load_cogs() -> None:
     successful: list[str] = []
     failing: list[str] = []
 
-    solo: list[str] = ["help", "blackjack", "synccommandtree"]
+    solo: list[str] = []
 
     for module_info in pkgutil.walk_packages(cogs.__path__, cogs.__name__ + "."):
         module_name = module_info.name.split(".")[-1]

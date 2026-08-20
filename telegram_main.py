@@ -15,20 +15,27 @@ from pathlib import Path
 from typing import TypedDict, cast
 
 from aiogram import Bot, Dispatcher
+from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
 
 from core.database import initialize_tables
 from core.log_handler import setup_logger
 from telegram_bot import routers
 
+CONFIG_DIR = Path("telegram_bot") / "config.json"
+
 
 class _Config(TypedDict):
-    TELEGRAM_TOKEN: str
-    TELEGRAM_ADMINS: list[int]
+    TOKEN: str
+    ADMINS: list[int]
 
 
-with Path("config.json").open("r") as file:
+with CONFIG_DIR.open("r") as file:
     CONFIG: _Config = cast("_Config", json.load(file))
-BOT = Bot(token=CONFIG["TELEGRAM_TOKEN"])  # Telegram bot instance
+BOT = Bot(
+    token=CONFIG["TOKEN"],
+    default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+)  # Telegram bot instance
 
 logger = setup_logger(__name__)
 
@@ -42,7 +49,7 @@ def _load_router(dp: Dispatcher) -> None:
     """
     successful: list[str] = []
 
-    solo: list[str] = ["help", "blackjack", "balance", "daily", "adjustbalance"]
+    solo: list[str] = ["flipcoin", "rolldice"]
 
     for modul_info in pkgutil.walk_packages(
         routers.__path__,
@@ -80,7 +87,8 @@ async def _main() -> None:
 
         # Log a message when bot is ready.
         me = await BOT.get_me()
-        logger.info("%s\nWe have logged in as %s ✅", "-" * 14, me.username)
+        logger.info("-" * 14)
+        logger.info("We have logged in as %s ✅", me.username)
 
         # Start listening to events.
         await dp.start_polling(BOT)  # pyright: ignore[reportUnknownMemberType]

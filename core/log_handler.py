@@ -5,63 +5,56 @@ from __future__ import annotations
 __all__ = ["setup_logger"]
 
 import logging
-from typing import final, override
+import sys
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
 
-from colorama import Fore, Style, init
-
-init(autoreset=True)  # ensures colors reset automatically
-
-
-@final
-class _ColorFormatter(logging.Formatter):
-    COLORS = {  # noqa: RUF012
-        logging.INFO: Fore.BLUE,
-        logging.WARNING: Fore.YELLOW,
-        logging.ERROR: Fore.LIGHTRED_EX,
-        logging.CRITICAL: Fore.RED,
-    }
-
-    @override
-    def format(self, record: logging.LogRecord) -> str:
-        color = self.COLORS.get(record.levelno, "")
-        message = super().format(record)
-        return color + message + Style.RESET_ALL
+LOG_DIR = Path("logs")
+LOG_DIR.mkdir(exist_ok=True)
+LOG_FILE = LOG_DIR / "app.log"
 
 
-def setup_logger(logger_name: str) -> logging.Logger:
+def setup_logger(name: str) -> logging.Logger:
     """Create and configure a logger with separate file and console handlers.
 
     Args:
-        logger_name (str): Name of logger, typically __name__ from the caller.
+        name (str): Name of logger, typically __name__ from the caller.
 
     Returns:
         Logger: Configured logger instance.
 
     """
-    logger = logging.getLogger(logger_name)
+    logger = logging.getLogger(name)
     logger.setLevel(logging.INFO)
 
     # Prevent duplicate handlers.
     if logger.handlers:
         return logger
 
-    # Configure file handler.
-    file_handler = logging.FileHandler(filename="log.log", mode="w", encoding="utf-8")
-    # Store only warning, error and critical logging in file
-    file_handler.setLevel(logging.WARNING)
-    file_handler_format = logging.Formatter(
+    formatter = logging.Formatter(
         "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        datefmt="%I:%M:%S %p",
+        datefmt="%Y-%m-%d %H:%M:%S",
     )
-    file_handler.setFormatter(file_handler_format)
 
-    # console handler
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.INFO)  # everything will be logged on the console
-    console_handler_format = _ColorFormatter("%(name)s - %(levelname)s - %(message)s")
-    console_handler.setFormatter(console_handler_format)
+    # Configure console handler.
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(formatter)
 
-    logger.addHandler(file_handler)  # adds file handler
-    logger.addHandler(console_handler)  # adds console handler
+    # Configure file handler.
+    file_handler = RotatingFileHandler(
+        filename=LOG_FILE,
+        mode="w",
+        maxBytes=5 * 1024 * 1024,
+        backupCount=3,
+        encoding="utf-8",
+    )
+    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(formatter)
 
+    # Add handlers to the logger.
+    logger.addHandler(console_handler)
+    logger.addHandler(file_handler)
+
+    # Return the logger.
     return logger
