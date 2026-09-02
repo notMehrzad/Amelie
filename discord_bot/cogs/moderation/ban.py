@@ -1,221 +1,225 @@
+"""ban command."""
+
+from __future__ import annotations
+
+__all__ = []
+
+from typing import final
+
 import discord
 from discord import app_commands
 from discord.ext import commands
 
-from cogs.utility.help import Help
+from core.help_data_constants import BAN_HELP
 from core.log_handler import setup_logger
 
 logger = setup_logger(__name__)
 
 
+@final
 class Ban(commands.Cog):
-    def __init__(self, bot: commands.Bot):
+    def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
-    Help = Help(
-        category=Help.Category.Moderation,
-        is_dm_only=False,
-        is_server_only=True,
-        subcommands=None,
-        permissions=["`Ban Members`"],
-        help_=None,
-        brief="Bans a member from the server.",
-        usage="<target> <reason[*optional*]>",
-        aliases=["b"],
-    )
-
-    @commands.command(name="ban", **Help.to_kwargs)
+    @commands.command(name=BAN_HELP.name, **BAN_HELP.kwargs)
     async def ban(
         self,
         ctx: commands.Context[commands.Bot],
         user: discord.User | int | str | None,
         *,
         reason: str | None = None,
-    ):
-        # if user runs the command in dm
-        if not ctx.guild or not isinstance(ctx.author, discord.Member):
-            return await ctx.reply("You can only run moderation commands in a server.")
+    ) -> None:
+        # Raise an error if user runs the command in DM.
+        if ctx.guild is None or not isinstance(ctx.author, discord.Member):
+            await ctx.reply("You can only run moderation commands in a server.")
+            return
 
-        # if the user has no permission to ban
+        # Raise an error if user doesn't have the permission to ban users.
         if not ctx.author.guild_permissions.ban_members:
-            return await ctx.reply("You have no permission to *ban* Members.")
+            await ctx.reply("You have no permission to *ban* Members.")
+            return
 
-        # if the bot has no permission to ban
+        # Raise an error if the bot doesn't have the permission to ban users.
         if not ctx.guild.me.guild_permissions.ban_members:
-            return await ctx.reply("I have no permisson to *ban* Members.")
+            await ctx.reply("I have no permisson to *ban* Members.")
+            return
 
-        # if user didn't enter any target member
-        if not user:
-            return await ctx.reply("You must mention a target Member for this command.")
+        # Raise an error if user enters no target user.
+        if user is None:
+            await ctx.reply("You must mention a target Member for this command.")
+            return
 
-        # if user mentions an invalid user
+        # Raise an error if user enters an invalid user.
         if not isinstance(user, (discord.abc.User, int)):
-            raise commands.BadArgument
+            await ctx.reply("Enter a valid member to ban.")
+            return
 
+        # Fetch target user.
         try:
-            user = (
-                (self.bot.get_user(user) or await self.bot.fetch_user(user))
+            target = (
+                (
+                    ctx.guild.get_member(user)
+                    or self.bot.get_user(user)
+                    or await self.bot.fetch_user(user)
+                )
                 if isinstance(user, int)
                 else user
-            )  # trys to fetch the target if id is given
-        except discord.NotFound:
-            return await ctx.reply(f"User with given ID doesn't exist.")
-
-        target = ctx.guild.get_member(
-            user.id
-        )  # fetches the target user from the server, None if not found
-        if not target:
-            # if the target is not a member and is in the ban list
-            try:
-                await ctx.guild.fetch_ban(discord.Object(id=user.id))
-                await ctx.reply(f"{user.display_name} is banned already.")
-                return
-            except discord.NotFound:
-                return await ctx.reply(
-                    f"{user.display_name} is not a Member of this server."
-                )
-
-        # if user wants to ban himself
-        if target.id == ctx.author.id:
-            return await ctx.reply("You can't ban yourself.")
-
-        # if user trys to ban the server owner
-        if target.id == ctx.guild.owner_id:
-            return await ctx.reply("You can't ban the server *Owner*.")
-
-        # if user wants to run moderation command on the bot
-        if target.id == ctx.me.id:
-            return await ctx.reply(
-                "You can't run my moderation commands on myself.\nnice try."
             )
+        except discord.NotFound:
+            await ctx.reply("User with given ID doesn't exist.")
+            return
 
-        # if user has lower or equal role position than target
+        # Check if target is already in the ban list if target is not a member.
+        if not isinstance(target, discord.Member):
+            try:
+                await ctx.guild.fetch_ban(
+                    discord.Object(id=target.id, type=discord.User),
+                )
+                await ctx.reply(f"{target.display_name} is banned already.")
+            except discord.NotFound:
+                await ctx.reply(
+                    f"{target.display_name} is not a Member of this server.",
+                )
+            return
+
+        # Raise an error if user wants to ban themselves.
+        if target.id == ctx.author.id:
+            await ctx.reply("You can't ban yourself.")
+            return
+
+        # Raise an error if user wants to ban guild owner.
+        if target.id == ctx.guild.owner_id:
+            await ctx.reply("You can't ban the server *Owner*.")
+            return
+
+        # Raise an error if user wants to ban the bot.
+        if target.id == ctx.me.id:
+            await ctx.reply(
+                "You can't run my moderation commands on myself.\nnice try.",
+            )
+            return
+
+        # Raise an error if target has higher or equal role positions than user.
         if (
             target.top_role >= ctx.author.top_role
             and ctx.author.id != ctx.guild.owner_id
         ):
-            return await ctx.reply(
-                "You can't ban a Member with *higher or equal* role position as you."
-            )
-
-        # if the bot has lower or equal role position than target
-        if target.top_role >= ctx.guild.me.top_role:
-            return await ctx.reply(
-                "I can't ban a Member with *higher or equal* role position as me."
-            )
-
-        # bans the target
-        try:
-            await ctx.guild.ban(user=target, reason=reason)
             await ctx.reply(
-                f"{target.display_name} has been *banned* via {ctx.author.display_name}."
-                + (f"\nreason: {reason}" if reason else "")
+                "You can't ban a Member with *higher or equal* role position as you.",
             )
-        except Exception:
-            logger.exception(f".ban failed to ban:")
-            await ctx.reply("Failed to ban.")
+            return
 
-    @ban.error
-    async def ban_error(
-        self, ctx: commands.Context[commands.Bot], error: commands.CommandError
-    ):
-        # if user entered an invalid user
-        if isinstance(error, commands.BadArgument):
-            await ctx.reply("Member not found. Please mention a valid member.")
-        else:
-            logger.exception(f"❌ something went wrong with ban command:")
-            await ctx.reply("something went wrong with **ban**.")
+        # Raise an error if target has higher or equal role positions than the bot.
+        if target.top_role >= ctx.guild.me.top_role:
+            await ctx.reply(
+                "I can't ban a Member with *higher or equal* role position as me.",
+            )
+            return
+
+        # Ban target user.
+        await ctx.guild.ban(user=target, reason=reason)
+
+        await ctx.reply(
+            f"{target.display_name} has been *banned* via {ctx.author.display_name}."
+            + (f"\nreason: {reason}" if reason else ""),
+        )
 
     # ban slash command
-    @app_commands.command(name="ban", description=Help.brief, extras=Help.extras)
+    @app_commands.command(
+        name=BAN_HELP.name,
+        description=BAN_HELP.brief,
+        extras=BAN_HELP.extras,
+    )
     @app_commands.guild_only()
     @app_commands.describe(
         user="The target Member to ban from the server.",
         reason="The reason you want to ban the target.",
     )
-    async def slashBan(
+    async def slash_ban(
         self,
         interaction: discord.Interaction,
         user: discord.Member,
         reason: str | None = None,
-    ):
-        # if user runs the command in dm
-        if not interaction.guild or not isinstance(interaction.user, discord.Member):
-            return await interaction.response.send_message(
-                "You can only run moderation commands in a server.", ephemeral=True
+    ) -> None:
+        # Raise an error if user runs the command in DM.
+        if interaction.guild is None or not isinstance(
+            interaction.user,
+            discord.Member,
+        ):
+            await interaction.response.send_message(
+                "You can only run moderation commands in a server.",
+                ephemeral=True,
             )
+            return
 
-        # if the user has no permission to ban
+        # Raise an error if user doesn't have the permission to ban users.
         if not interaction.user.guild_permissions.ban_members:
-            return await interaction.response.send_message(
-                "You have no permission to *ban* Members.", ephemeral=True
+            await interaction.response.send_message(
+                "You have no permission to *ban* Members.",
+                ephemeral=True,
             )
+            return
 
-        # if the bot has no permission to ban
+        # Raise an error if the bot doesn't have the permission to ban users.
         if not interaction.guild.me.guild_permissions.ban_members:
-            return await interaction.response.send_message(
-                "I have no permisson to *ban* Members.", ephemeral=True
+            await interaction.response.send_message(
+                "I have no permisson to *ban* Members.",
+                ephemeral=True,
             )
+            return
 
-        # if user wants to ban himself
+        # Raise an error if user wants to ban themselves.
         if user.id == interaction.user.id:
-            return await interaction.response.send_message(
-                "You can't ban yourself.", ephemeral=True
+            await interaction.response.send_message(
+                "You can't ban yourself.",
+                ephemeral=True,
             )
+            return
 
-        # if user trys to ban the server owner
+        # Raise an error if user wants to ban guild owner.
         if user.id == interaction.guild.owner_id:
-            return await interaction.response.send_message(
-                "You can't ban the server *Owner*.", ephemeral=True
+            await interaction.response.send_message(
+                "You can't ban the server *Owner*.",
+                ephemeral=True,
             )
+            return
 
-        # if user wants to run moderation command on the bot
-        if user.id == interaction.client.application_id:
-            return await interaction.response.send_message(
+        # Raise an error if user wants to ban the bot.
+        if user.id == interaction.application_id:
+            await interaction.response.send_message(
                 "You can't run my moderation commands on myself.\nnice try.",
                 ephemeral=True,
             )
+            return
 
-        # if user has lower or equal role position than target
+        # Raise an error if target has higher or equal role positions than user.
         if (
             user.top_role >= interaction.user.top_role
             and interaction.user.id != interaction.guild.owner_id
         ):
-            return await interaction.response.send_message(
+            await interaction.response.send_message(
                 "You can't ban a Member with *higher or equal* role position as you.",
                 ephemeral=True,
             )
+            return
 
-        # if the bot has lower or equal role position than target
+        # Raise an error if target has higher or equal role positions than the bot.
         if user.top_role >= interaction.guild.me.top_role:
-            return await interaction.response.send_message(
+            await interaction.response.send_message(
                 "I can't ban a Member with *higher or equal* role position as me.",
                 ephemeral=True,
             )
+            return
 
-        # bans the target
-        try:
-            await interaction.guild.ban(user=user, reason=reason)
-            await interaction.response.send_message(
-                f"{user.display_name} has been *banned* via {interaction.user.display_name}."
-                + (f"\nreason: {reason}" if reason else "")
-            )
-        except Exception:
-            logger.exception(f".ban failed to ban:")
-            await interaction.response.send_message("Failed to ban.", ephemeral=True)
+        # Ban target user.
+        await interaction.guild.ban(user=user, reason=reason)
 
-    @slashBan.error
-    async def slashBan_error(self, interaction: discord.Interaction, error: Exception):
-        logger.exception(f"❌ something went wrong with /ban command:")
-        try:
-            await interaction.response.send_message(
-                "something went wrong with **ban**.", ephemeral=True
-            )
-        except discord.InteractionResponded:
-            await interaction.followup.send(
-                "something went wrong with **ban**.", ephemeral=True
-            )
+        await interaction.response.send_message(
+            f"{user.display_name} has been *banned*"
+            " via {interaction.user.display_name}."
+            + (f"\nreason: {reason}" if reason else ""),
+        )
 
 
-async def setup(bot: commands.Bot):
+async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Ban(bot))
