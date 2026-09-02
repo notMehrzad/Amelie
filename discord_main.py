@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import NoReturn, TypedDict, cast
 
 import discord
+from discord import app_commands
 from discord.ext import commands, tasks
 
 from core import terminal
@@ -93,6 +94,45 @@ async def on_ready() -> None:
     _ = BOT.loop.create_task(_terminal_listener())
 
     _ = bot_status_change.start()
+
+
+@BOT.event
+async def on_command_error(
+    ctx: commands.Context[commands.Bot],
+    error: commands.CommandError,
+) -> None:
+    """Log and send a proper message when prefix command errors."""
+    error = getattr(error, "original", error)
+    if isinstance(error, commands.CommandNotFound) or ctx.command is None:
+        return
+
+    logger.error(
+        "❌ Something went wrong with %s prefix command:",
+        ctx.command.name,
+        exc_info=error,
+    )
+    await ctx.reply("Something went wrong.")
+
+
+@BOT.tree.error
+async def on_app_command_error(
+    interaction: discord.Interaction,
+    error: app_commands.AppCommandError,
+) -> None:
+    """Log and send a proper message when slash command errors."""
+    error = getattr(error, "original", error)
+    if interaction.command is None:
+        return
+
+    logger.error(
+        "❌ Something went wrong with %s slash command:",
+        interaction.command.name,
+        exc_info=error,
+    )
+    if not interaction.response.is_done():
+        await interaction.response.send_message("Something went wrong.", ephemeral=True)
+    else:
+        await interaction.followup.send("Something went wrong.", ephemeral=True)
 
 
 # Store Amélie's different status.
