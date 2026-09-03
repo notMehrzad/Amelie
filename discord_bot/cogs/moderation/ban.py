@@ -41,7 +41,7 @@ class Ban(commands.Cog):
 
         # Raise an error if the bot doesn't have the permission to ban users.
         if not ctx.guild.me.guild_permissions.ban_members:
-            await ctx.reply("I have no permisson to *ban* Members.")
+            await ctx.reply("I have no permission to *ban* Members.")
             return
 
         # Raise an error if user enters no target user.
@@ -119,9 +119,13 @@ class Ban(commands.Cog):
         # Ban target user.
         await ctx.guild.ban(user=target, reason=reason)
 
+        reason = f"\nreason: {reason}" if reason else ""
         await ctx.reply(
-            f"{target.display_name} has been *banned* via {ctx.author.display_name}."
-            + (f"\nreason: {reason}" if reason else ""),
+            (
+                f"{target.display_name} has been *banned*"
+                " via {interaction.user.display_name}."
+                f"{reason}"
+            ),
         )
 
     # ban slash command
@@ -163,7 +167,7 @@ class Ban(commands.Cog):
         # Raise an error if the bot doesn't have the permission to ban users.
         if not interaction.guild.me.guild_permissions.ban_members:
             await interaction.response.send_message(
-                "I have no permisson to *ban* Members.",
+                "I have no permission to *ban* Members.",
                 ephemeral=True,
             )
             return
@@ -214,10 +218,13 @@ class Ban(commands.Cog):
         # Ban target user.
         await interaction.guild.ban(user=user, reason=reason)
 
+        reason = f"\nreason: {reason}" if reason else ""
         await interaction.response.send_message(
-            f"{user.display_name} has been *banned*"
-            " via {interaction.user.display_name}."
-            + (f"\nreason: {reason}" if reason else ""),
+            (
+                f"{user.display_name} has been *banned*"
+                " via {interaction.user.display_name}."
+                f"{reason}"
+            ),
         )
 
 

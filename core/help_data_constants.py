@@ -5,12 +5,14 @@ from __future__ import annotations
 __all__ = [
     "ADJUSTBALANCE_HELP",
     "BALANCE_HELP",
+    "BAN_HELP",
     "BLACKJACK_HELP",
     "CALCULATE_HELP",
     "CHOOSE_HELP",
     "DAILY_HELP",
     "FLIPCOIN_HELP",
     "HELP_HELP",
+    "KICK_HELP",
     "LIMITDICE_HELP",
     "PING_HELP",
     "ROLLDICE_HELP",
@@ -50,6 +52,21 @@ BALANCE_HELP = HelpData(
     brief="Shows the balance of the user.",
     usage=None,
     aliases=["bal"],
+    is_hidden=False,
+)
+
+BAN_HELP = HelpData(
+    is_enabled=True,
+    name="ban",
+    category=HelpData.CommandCategory.MODERATION,
+    is_dm_only=False,
+    is_server_only=True,
+    subcommands=None,
+    permissions=["`Ban Members`"],
+    help_=None,
+    brief="Bans a member from the server.",
+    usage="<target> <reason[*optional*]>",
+    aliases=["b"],
     is_hidden=False,
 )
 
@@ -192,6 +209,21 @@ HELP_HELP = HelpData(
     brief="Displays the help menu or detailed information about a command.",
     usage="<command_name*[optional]*>",
     aliases=["h"],
+    is_hidden=False,
+)
+
+KICK_HELP = HelpData(
+    is_enabled=True,
+    name="kick",
+    category=HelpData.CommandCategory.MODERATION,
+    is_dm_only=False,
+    is_server_only=True,
+    subcommands=None,
+    permissions=["`Kick, Approve and Reject Members`"],
+    help_=None,
+    brief="Kicks a member from the server.",
+    usage="<target> <reason[*optional*]>",
+    aliases=["k"],
     is_hidden=False,
 )
 
