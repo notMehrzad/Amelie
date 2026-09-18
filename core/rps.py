@@ -15,7 +15,7 @@ class RPSOption(Enum):
     SCISSORS = ("scissors", "✂️")
 
     @property
-    def name(self) -> str:
+    def label(self) -> str:
         """Return the name of the option."""
         return self.value[0]
 

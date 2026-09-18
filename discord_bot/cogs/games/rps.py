@@ -21,9 +21,10 @@ logger = setup_logger(__name__)
 
 @final
 class _RPSGameState(Enum):
-    USER_CHOICE = auto()
-    TARGET_CHOICE = auto()
-    RESULT = auto()
+    USER_TURN = auto()
+    TARGET_TURN = auto()
+
+    FINISHED = auto()
 
 
 @final
@@ -35,13 +36,13 @@ class Rps(commands.Cog):
     async def rps(
         self,
         ctx: commands.Context[commands.Bot],
-        user: discord.abc.User | str | None = None,
+        user: discord.User | str | None = None,
     ) -> None:
         # If user enters no target user.
         if user is None:
             target = ctx.me
 
-        # If user enters a tarrget user.
+        # If user enters a target user.
         else:
             # Raise an error if user enters an invlaid target user.
             if not isinstance(user, discord.abc.User):
@@ -86,15 +87,6 @@ class Rps(commands.Cog):
         # Start the view.
         await RpsView(ctx, target).start()
 
-    @rps.error
-    async def rps_error(
-        self,
-        ctx: commands.Context[commands.Bot],
-        error: commands.CommandError,
-    ) -> None:
-        logger.error("❌ Something went wrong with rps command:", exc_info=error)
-        await ctx.reply("Something went wrong with **rps**.")
-
     # rps slash command
     @app_commands.command(
         name=RPS_HELP.name,
@@ -105,7 +97,7 @@ class Rps(commands.Cog):
     async def slash_rps(
         self,
         interaction: discord.Interaction,
-        user: discord.abc.User | None = None,
+        user: discord.User | None = None,
     ) -> None:
         client_user = cast("discord.user.ClientUser", interaction.client.user)
         # If user enters no target user.
@@ -160,25 +152,8 @@ class Rps(commands.Cog):
         # Start the view.
         await RpsView(interaction, target).start()
 
-    @slash_rps.error
-    async def slash_rps_error(
-        self,
-        interaction: discord.Interaction,
-        error: app_commands.AppCommandError,
-    ) -> None:
-        logger.error("❌ Something went wrong with /rps command:", exc_info=error)
-        try:
-            await interaction.response.send_message(
-                "Something went wrong with **rps**.",
-                ephemeral=True,
-            )
-        except discord.InteractionResponded:
-            await interaction.followup.send(
-                "Something went wrong with **rps**.",
-                ephemeral=True,
-            )
 
-
+@final
 class RpsView(discord.ui.View):
     def __init__(
         self,
@@ -186,31 +161,25 @@ class RpsView(discord.ui.View):
         target: discord.abc.User,
     ) -> None:
         super().__init__(timeout=180)
+        self.target: discord.abc.User = target
         if isinstance(ctx, discord.Interaction):
             self.slash_command = True
             self.interaction = ctx
             self.user = self.interaction.user
-            if self.target.id == self.interaction.application_id:
-                self.bot_plays = True
-            else:
-                self.bot_plays = False
+            self.bot_plays = self.target.id == self.interaction.application_id
         else:
             self.slash_command = False
             self.ctx = ctx
             self.user = self.ctx.author
-            if self.target.id == self.ctx.me.id:
-                self.bot_plays = True
-            else:
-                self.bot_plays = False
-        self.target: discord.abc.User = target
+            self.bot_plays = self.target.id == self.ctx.me.id
 
         self.game = RPSGame(self.user.id, self.target.id)
-        self.state: _RPSGameState = _RPSGameState.TARGET_CHOICE
+        self.state: _RPSGameState = _RPSGameState.TARGET_TURN
 
         self.embed_color = discord.Color.random()
         self.timestamp = discord.utils.utcnow()
 
-        # Create as mnay buttons as options for RPS.
+        # Create as many buttons as options for RPS.
         for option in RPSOption:
             button: discord.ui.Button[discord.ui.View] = discord.ui.Button(
                 style=discord.ButtonStyle.primary,
@@ -226,7 +195,7 @@ class RpsView(discord.ui.View):
         Bot picks a random RPS option.
         """
         self.game.player2_plays(secrets.choice(list(RPSOption)))
-        self.state = _RPSGameState.USER_CHOICE
+        self.state = _RPSGameState.USER_TURN
 
     async def start(self) -> None:
         """Start the view."""
@@ -277,7 +246,7 @@ class RpsView(discord.ui.View):
 
             # Raise an error if it's target's turn and interaction is from user.
             if (
-                self.state == _RPSGameState.TARGET_CHOICE
+                self.state == _RPSGameState.TARGET_TURN
                 and interaction.user.id != self.target.id
             ):
                 if self.game.player1_choice is None:
@@ -297,7 +266,7 @@ class RpsView(discord.ui.View):
 
             # Raise an error if it's user's turn and interaction is from target.
             if (
-                self.state == _RPSGameState.USER_CHOICE
+                self.state == _RPSGameState.USER_TURN
                 and interaction.user.id != self.user.id
             ):
                 if self.game.player2_choice is None:
@@ -316,15 +285,12 @@ class RpsView(discord.ui.View):
                 return
 
             # Target's turn
-            if (
-                self.state == _RPSGameState.TARGET_CHOICE
-                and self.game.player2_choice is not None
-            ):
+            if self.state == _RPSGameState.TARGET_TURN:
                 self.game.player2_plays(rps_option)
-                self.state = _RPSGameState.USER_CHOICE
+                self.state = _RPSGameState.USER_TURN
 
                 await interaction.response.send_message(
-                    f"You played {self.game.player2_choice.emoji}.",
+                    f"You played {rps_option.emoji}.",
                     ephemeral=True,
                 )
 
@@ -338,108 +304,98 @@ class RpsView(discord.ui.View):
                     timestamp=self.timestamp,
                 )
                 # Send notification embed.
-                if self.slash_command:
-                    await self.interaction.edit_original_response(
-                        content=None,
-                        embed=notification_embed,
-                    )
-                    await self.interaction.followup.send(
-                        f"{self.user.mention}, It's your turn now !",
-                    )
-                else:
-                    await self.msg.edit(content=None, embed=notification_embed)
-                    await self.msg.reply(f"{self.user.mention}, It's your turn now !")
+                await interaction.response.edit_message(
+                    content=None,
+                    embed=notification_embed,
+                )
+                await self.msg.reply(
+                    f"{self.user.mention}, It's your turn now !",
+                )
+
+                return
 
             # User's turn
-            elif (
-                self.state == _RPSGameState.USER_CHOICE
-                and self.game.player1_choice is not None
-            ):
+            if self.state == _RPSGameState.USER_TURN:
                 self.game.player1_plays(rps_option)
-                self.state = _RPSGameState.RESULT
+                self.state = _RPSGameState.FINISHED
 
                 await interaction.response.send_message(
-                    f"You played {self.game.player1_choice.emoji}.",
+                    f"You played {rps_option.emoji}.",
                     ephemeral=True,
                 )
 
                 await self.finish_game()
 
+                return
+
         return callback
 
     async def finish_game(self) -> None:
         """Finish and calculate the result of the game."""
-        if (
-            self.game.player1_choice is not None
-            and self.game.player2_choice is not None
-        ):
-            # Calculate the RPS winner.
-            winner_user_id = self.game.calculate_winner()
-            # Draw
-            if winner_user_id is None:
-                description = "**It was a Draw !**"
-                bot_dialogue = (
-                    f"{self.user.mention} escaped this time."
-                    if self.bot_plays
-                    else None
-                )
-                winner_thumbnail = None
+        if self.game.player1_choice is None or self.game.player2_choice is None:
+            return
 
-            # User wins.
-            elif winner_user_id == self.user.id:
-                description = f"**{self.user.mention} has Won !**"
-                bot_dialogue = "-ahh. maybe another time." if self.bot_plays else None
-                winner_thumbnail = self.user.display_avatar.url
-
-            # Target wins.
-            else:
-                description = (
-                    f"**{self.target.mention} has Won !**"
-                    if not self.bot_plays
-                    else "**I have Won !**"
-                )
-                bot_dialogue = (
-                    "huh. not even a single sweat-" if self.bot_plays else None
-                )
-                winner_thumbnail = self.target.display_avatar.url
-
-            result_embed = (
-                discord.Embed(
-                    color=self.embed_color,
-                    title="Rock, Paper, Scissors ! ",
-                    description=description,
-                    timestamp=self.timestamp,
-                )
-                .set_footer(text=bot_dialogue)
-                .add_field(
-                    name=f"{self.user.display_name} Choice",
-                    value=(
-                        f"{self.game.player1_choice.name}"
-                        f" {self.game.player1_choice.emoji}"
-                    ),
-                    inline=True,
-                )
-                .add_field(
-                    name=f"{self.target.display_name} Choice",
-                    value=(
-                        f"{self.game.player2_choice.name}"
-                        f" {self.game.player2_choice.emoji}"
-                    ),
-                    inline=True,
-                )
-                .set_thumbnail(url=winner_thumbnail)
+        # Calculate the RPS winner.
+        winner_user_id = self.game.calculate_winner()
+        # Draw
+        if winner_user_id is None:
+            description = "**It was a Draw !**"
+            bot_dialogue = (
+                f"{self.user.mention} escaped this time." if self.bot_plays else None
             )
-            # Send result embed.
-            if self.slash_command:
-                await self.interaction.edit_original_response(
-                    embed=result_embed,
-                    view=None,
-                )
-            else:
-                await self.msg.edit(embed=result_embed, view=None)
+            winner_thumbnail = None
 
-            # Stop the view.
-            self.stop()
+        # User wins.
+        elif winner_user_id == self.user.id:
+            description = f"**{self.user.mention} has Won !**"
+            bot_dialogue = "-ahh. maybe another time." if self.bot_plays else None
+            winner_thumbnail = self.user.display_avatar.url
+
+        # Target wins.
+        else:
+            description = (
+                f"**{self.target.mention} has Won !**"
+                if not self.bot_plays
+                else "**I have Won !**"
+            )
+            bot_dialogue = "huh. not even a single sweat-" if self.bot_plays else None
+            winner_thumbnail = self.target.display_avatar.url
+
+        result_embed = (
+            discord.Embed(
+                color=self.embed_color,
+                title="Rock, Paper, Scissors ! ",
+                description=description,
+                timestamp=self.timestamp,
+            )
+            .set_footer(text=bot_dialogue)
+            .add_field(
+                name=f"{self.user.display_name} Choice",
+                value=(
+                    f"{self.game.player1_choice.name} {self.game.player1_choice.emoji}"
+                ),
+                inline=True,
+            )
+            .add_field(
+                name=f"{self.target.display_name} Choice",
+                value=(
+                    f"{self.game.player2_choice.name} {self.game.player2_choice.emoji}"
+                ),
+                inline=True,
+            )
+            .set_thumbnail(url=winner_thumbnail)
+        )
+        # Send result embed.
+        if self.slash_command:
+            await self.interaction.edit_original_response(
+                embed=result_embed,
+                view=None,
+            )
+        else:
+            await self.msg.edit(embed=result_embed, view=None)
+
+        # Stop the view.
+        self.stop()
 
     async def on_timeout(self) -> None:
         # Disable all buttons upon timeout.
@@ -449,7 +405,7 @@ class RpsView(discord.ui.View):
 
         if self.bot_plays:
             description = f"{self.user.mention} didn't make a move.\n*shame on you..*"
-        elif self.state == _RPSGameState.TARGET_CHOICE:
+        elif self.state == _RPSGameState.TARGET_TURN:
             description = (
                 f"{self.target.mention} didn't seem brave enough"
                 " to accept the challenge."
