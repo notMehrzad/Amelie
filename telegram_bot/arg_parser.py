@@ -11,12 +11,20 @@ available.
 
 from __future__ import annotations
 
-__all__ = ["parse_args"]
+__all__ = ["Greedy", "parse_args"]
 
 import inspect
 import shlex
 from functools import wraps
-from typing import TYPE_CHECKING, Any, Concatenate, ParamSpec, get_args
+from typing import (
+    TYPE_CHECKING,
+    Annotated,
+    Any,
+    Concatenate,
+    ParamSpec,
+    get_args,
+    get_origin,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -27,6 +35,10 @@ P = ParamSpec("P")
 
 _TRUTHY = ("true", "yes", "y", "1", "on")
 _FALSY = ("false", "no", "n", "0", "off")
+
+_GREEDY_MARKER = object()
+
+Greedy = Annotated[str, _GREEDY_MARKER]
 
 _NO_DEFAULT = object()
 
@@ -123,6 +135,36 @@ def parse_args(
         that parses and converts command arguments before execution.
 
     """
+    signature = inspect.signature(func)
+    all_params = list(signature.parameters.values())[1:]
+
+    di_params = [p for p in all_params if p.kind is inspect.Parameter.KEYWORD_ONLY]
+    has_var_keyword = any(p.kind is inspect.Parameter.VAR_KEYWORD for p in all_params)
+
+    positional_params = [
+        p
+        for p in all_params
+        if p.kind not in (inspect.Parameter.KEYWORD_ONLY, inspect.Parameter.VAR_KEYWORD)
+    ]
+    var_param = (
+        positional_params[-1]
+        if positional_params
+        and positional_params[-1].kind is inspect.Parameter.VAR_POSITIONAL
+        else None
+    )
+    fixed_params = positional_params[:-1] if var_param else positional_params
+
+    greedy_index: int | None = None
+    for n, p in enumerate(fixed_params):
+        resolved = _eval_annotation(p.annotation, func)
+        if get_origin(resolved) is Annotated and _GREEDY_MARKER in get_args(resolved):
+            if n != len(fixed_params) - 1:
+                msg = f"Greedy parameter {p.name!r} must be the last argument."
+                raise TypeError(msg)
+            if var_param is not None:
+                msg = f"Greedy parameter {p.name!r} can't be combined with *args."
+                raise TypeError(msg)
+            greedy_index = n
 
     @wraps(func)
     async def wrapper(
@@ -131,16 +173,8 @@ def parse_args(
         *args: P.args,
         **kwargs: P.kwargs,
     ) -> None:
-        signature = inspect.signature(func)
-        params = list(signature.parameters.values())[1:]
-
-        if not params:
+        if not fixed_params and var_param is None:
             return await func(message, *args, **kwargs)
-
-        var_param = (
-            params[-1] if params[-1].kind is inspect.Parameter.VAR_POSITIONAL else None
-        )
-        fixed_params = params[:-1] if var_param else params
 
         raw_text: str = command.args.strip() if command.args else ""
 
@@ -149,13 +183,22 @@ def parse_args(
         except ValueError:
             raw_words = raw_text.split()
 
-        if var_param is None:
-            raw_words = raw_words[: len(fixed_params)]
+        if greedy_index is not None:
+            fixed_words = raw_words[:greedy_index]
 
-        fixed_words = raw_words[: len(fixed_params)]
+            while len(fixed_words) < greedy_index:
+                fixed_words.append(None)  # pyright: ignore[reportArgumentType]
 
-        while len(fixed_words) < len(fixed_params):
-            fixed_words.append(None)  # pyright: ignore[reportArgumentType]
+            remainder = raw_words[greedy_index:]
+            fixed_words.append(" ".join(remainder) if remainder else None)  # pyright: ignore[reportArgumentType]
+        else:
+            if var_param is None:
+                raw_words = raw_words[: len(fixed_params)]
+
+            fixed_words = raw_words[: len(fixed_params)]
+
+            while len(fixed_words) < len(fixed_params):
+                fixed_words.append(None)  # pyright: ignore[reportArgumentType]
 
         args_list: list[Any] = list(fixed_words)
 
@@ -201,11 +244,18 @@ def parse_args(
 
         return await func(message, *args_list, *var_values, *args, **kwargs)
 
-    wrapper.__signature__ = inspect.Signature(  # type: ignore[attr-defined]
-        parameters=[
-            inspect.Parameter("message", inspect.Parameter.POSITIONAL_OR_KEYWORD),
-            inspect.Parameter("command", inspect.Parameter.POSITIONAL_OR_KEYWORD),
-        ],
+    exposed_params = [
+        inspect.Parameter("message", inspect.Parameter.POSITIONAL_OR_KEYWORD),
+        inspect.Parameter("command", inspect.Parameter.POSITIONAL_OR_KEYWORD),
+        *di_params,
+    ]
+    if has_var_keyword:
+        exposed_params.append(
+            inspect.Parameter("kwargs", inspect.Parameter.VAR_KEYWORD),
+        )
+
+    wrapper.__signature__ = inspect.Signature(  # pyright: ignore[reportAttributeAccessIssue]
+        parameters=exposed_params,
     )
     del wrapper.__wrapped__
 

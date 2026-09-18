@@ -36,6 +36,8 @@ BOT = Bot(
     token=CONFIG["TOKEN"],
     default=DefaultBotProperties(parse_mode=ParseMode.HTML),
 )  # Telegram bot instance
+# Initialize dispatcher.
+DP = Dispatcher()
 
 logger = setup_logger(__name__)
 
@@ -49,7 +51,7 @@ def _load_router(dp: Dispatcher) -> None:
     """
     successful: list[str] = []
 
-    solo: list[str] = ["flipcoin", "rolldice"]
+    solo: list[str] = []
 
     for modul_info in pkgutil.walk_packages(
         routers.__path__,
@@ -80,18 +82,16 @@ async def _main() -> None:
     await initialize_tables()
 
     async with BOT:
-        # Initialize dispatcher.
-        dp = Dispatcher()
         # Load all routers.
-        _load_router(dp)
+        _load_router(DP)
 
         # Log a message when bot is ready.
-        me = await BOT.get_me()
+        DP["bot_user"] = await BOT.get_me()
         logger.info("-" * 14)
-        logger.info("We have logged in as %s ✅", me.username)
+        logger.info("We have logged in as %s ✅", DP["bot_user"].username)
 
         # Start listening to events.
-        await dp.start_polling(BOT)  # pyright: ignore[reportUnknownMemberType]
+        await DP.start_polling(BOT)  # pyright: ignore[reportUnknownMemberType]
 
 
 if __name__ == "__main__":
