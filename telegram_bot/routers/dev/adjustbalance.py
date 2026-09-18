@@ -10,9 +10,9 @@ from typing import TYPE_CHECKING
 from aiogram import Router
 from aiogram.filters import Command
 
-from arg_parser import parse_args
 from core.bank import get_bank_account
 from core.help_data_constants import ADJUSTBALANCE_HELP
+from telegram_bot.arg_parser import parse_args
 
 if TYPE_CHECKING:
     from aiogram.types import Message

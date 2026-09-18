@@ -1,23 +1,15 @@
-from aiogram import types, Router, filters
-from telegramRouters.utility.help import HelpData
+"""start command."""
+
+from __future__ import annotations
+
+__all__ = []
+
+from aiogram import Router, filters, types
 
 router = Router(name=__name__)
 
-HelpData = HelpData(
-    category=HelpData.Category.Utility,
-    dmOnly=False,
-    serverOnly=False,
-    subcommands=None,
-    permissions=None,
-    help=None,
-    brief="The base start command.",
-    usage=None,
-    aliases=None,
-    hidden=True,
-)
-
 
 @router.message(filters.CommandStart())
-async def start(message: types.Message):
+async def start(message: types.Message) -> None:
     if message.from_user:
-        await message.answer(f"Hi there, {message.from_user.username}.")
+        await message.answer(f"Hi there, {message.from_user.mention_html()}.")

@@ -17,9 +17,9 @@ from aiogram.filters.callback_data import CallbackData
 from aiogram.types import Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from arg_parser import parse_args
 from core.help import ExtrasTyped, HelpData
 from core.help_data_constants import HELP_HELP
+from telegram_bot.arg_parser import parse_args
 
 if TYPE_CHECKING:
     from aiogram.types import CallbackQuery

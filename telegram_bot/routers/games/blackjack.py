@@ -12,7 +12,6 @@ from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.filters.callback_data import CallbackData
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from arg_parser import parse_args
 
 from core.bank import CURRENCY_NAME, BankAccount, get_bank_account
 from core.blackjack import (
@@ -24,6 +23,7 @@ from core.blackjack import (
 )
 from core.help_data_constants import BLACKJACK_HELP
 from core.session import Session, get_session
+from telegram_bot.arg_parser import parse_args
 
 if TYPE_CHECKING:
     from aiogram.types import CallbackQuery, Message, User
