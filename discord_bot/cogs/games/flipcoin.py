@@ -32,15 +32,6 @@ class FlipCoin(commands.Cog):
         # Send result.
         await ctx.reply(f"{result}.")
 
-    @flipcoin.error
-    async def flipcoin_error(
-        self,
-        ctx: commands.Context[commands.Bot],
-        error: commands.CommandError,
-    ) -> None:
-        logger.error("❌ Something went wrong with flipcoin command:", exc_info=error)
-        await ctx.reply("Something went wrong with **flipcoin**.")
-
     # flipcoin slash command
     @app_commands.command(
         name=FLIPCOIN_HELP.name,
@@ -53,24 +44,6 @@ class FlipCoin(commands.Cog):
 
         # Send result.
         await interaction.response.send_message(f"{result}.")
-
-    @slash_flipcoin.error
-    async def slash_flipcoin_error(
-        self,
-        interaction: discord.Interaction,
-        error: app_commands.AppCommandError,
-    ) -> None:
-        logger.error("❌ Something went wrong with /flipcoin command:", exc_info=error)
-        try:
-            await interaction.response.send_message(
-                "Something went wrong with **flipcoin**.",
-                ephemeral=True,
-            )
-        except discord.InteractionResponded:
-            await interaction.followup.send(
-                "Something went wrong with **flipcoin**.",
-                ephemeral=True,
-            )
 
 
 async def setup(bot: commands.Bot) -> None:

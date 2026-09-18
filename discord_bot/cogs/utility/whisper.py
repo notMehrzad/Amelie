@@ -75,15 +75,6 @@ class Whisper(commands.Cog):
         # Send the view.
         await WhisperView(ctx, target, message).start()
 
-    @whisper.error
-    async def whisper_error(
-        self,
-        ctx: commands.Context[commands.Bot],
-        error: commands.CommandError,
-    ) -> None:
-        logger.error("❌ Something went wrong with whisper command:", exc_info=error)
-        await ctx.reply("Something went wrong with **whisper**.")
-
     # whisper slash command
     @app_commands.command(
         name="whisper",
@@ -128,24 +119,6 @@ class Whisper(commands.Cog):
 
         # Send the view.
         await WhisperView(interaction, target, message).start()
-
-    @slash_whisper.error
-    async def slash_whisper_error(
-        self,
-        interaction: discord.Interaction,
-        error: app_commands.AppCommandError,
-    ) -> None:
-        logger.error("❌ Something went wrong with /whisper command:", exc_info=error)
-        try:
-            await interaction.response.send_message(
-                "Something went wrong with **whisper**.",
-                ephemeral=True,
-            )
-        except discord.InteractionResponded:
-            await interaction.followup.send(
-                "Something went wrong with **whisper**.",
-                ephemeral=True,
-            )
 
 
 class WhisperView(discord.ui.View):

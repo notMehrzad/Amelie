@@ -92,15 +92,6 @@ class Ping(commands.Cog):
         # Send result embed.
         await msg.edit(content=None, embed=result_embed)
 
-    @ping.error
-    async def ping_error(
-        self,
-        ctx: commands.Context[commands.Bot],
-        error: commands.CommandError,
-    ) -> None:
-        logger.error("❌ Something went wrong with ping command:", exc_info=error)
-        await ctx.reply("Something went wrong with **ping**.")
-
     # ping slash command
     @app_commands.command(
         name="ping",
@@ -176,24 +167,6 @@ class Ping(commands.Cog):
         ).set_footer(text=f"requested by {interaction.user.name}")
         # Send result embed.
         await interaction.edit_original_response(content=None, embed=result_embed)
-
-    @slash_ping.error
-    async def slash_ping_error(
-        self,
-        interaction: discord.Interaction,
-        error: app_commands.AppCommandError,
-    ) -> None:
-        logger.error("❌ Something went wrong with /ping command:", exc_info=error)
-        try:
-            await interaction.response.send_message(
-                "Something went wrong with **ping**.",
-                ephemeral=True,
-            )
-        except discord.InteractionResponded:
-            await interaction.followup.send(
-                "Something went wrong with **ping**.",
-                ephemeral=True,
-            )
 
 
 async def setup(bot: commands.Bot) -> None:

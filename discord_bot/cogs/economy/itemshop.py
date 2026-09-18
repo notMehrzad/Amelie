@@ -54,13 +54,6 @@ class ItemShop(commands.Cog):
             view = ItemShopView(ctx, categoryEmbeds=embeds)  # initializes the view
             await view.start()
 
-    @item_shop.error
-    async def item_shop_error(
-        self, ctx: commands.Context[commands.Bot], error: commands.CommandError
-    ) -> None:
-        logger.exception("❌ something went wrong with itemshop command:")
-        _ = await ctx.reply("something went wrong with **itemshop**.")
-
     # itemshop slash command
     @app_commands.command(name="itemshop", description=Help.brief, extras=Help.extras)
     async def slash_item_shop(
@@ -92,22 +85,6 @@ class ItemShop(commands.Cog):
                 interaction, categoryEmbeds=embeds
             )  # initializes the view
             await view.start()
-
-    @slash_item_shop.error
-    async def slash_item_shop_error(
-        self,
-        interaction: discord.Interaction,
-        error: app_commands.errors.AppCommandError,
-    ) -> None:
-        logger.exception("❌ something went wrong with /itemshop command:")
-        try:
-            _ = await interaction.response.send_message(
-                "something went wrong with **itemshop**.", ephemeral=True
-            )
-        except discord.InteractionResponded:
-            await interaction.followup.send(
-                "something went wrong with **itemshop**.", ephemeral=True
-            )
 
 
 @final

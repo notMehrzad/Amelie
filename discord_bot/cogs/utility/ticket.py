@@ -69,19 +69,6 @@ class Ticket(commands.Cog):
         # Start the view.
         await TicketView(ctx, subject, session, admin).start()
 
-    @ticket.error
-    async def ticket_error(
-        self,
-        ctx: commands.Context[commands.Bot],
-        error: commands.CommandError,
-    ) -> None:
-        session = get_session(ctx.author.id, Session.SessionTypes.MESSAGING)
-        if session is not None:
-            session.close()
-
-        logger.error("❌ Something went wrong with ticket command:", exc_info=error)
-        await ctx.reply("Something went wrong with **ticket**.")
-
     # ticket slash command
     @app_commands.command(
         name="ticket",
@@ -117,29 +104,6 @@ class Ticket(commands.Cog):
 
         # Start the view.
         await TicketView(interaction, subject, session, admin).start()
-
-    @slash_ticket.error
-    async def slash_ticket_error(
-        self,
-        interaction: discord.Interaction,
-        error: app_commands.AppCommandError,
-    ) -> None:
-        session = get_session(interaction.user.id, Session.SessionTypes.MESSAGING)
-        if session is not None:
-            session.close()
-
-        logger.error("❌ Something went wrong with /ticket command:", exc_info=error)
-        (
-            await interaction.response.send_message(
-                "Something went wrong with **ticket**.",
-                ephemeral=True,
-            )
-            if not interaction.response.is_done()
-            else await interaction.followup.send(
-                "Something went wrong with **ticket**.",
-                ephemeral=True,
-            )
-        )
 
 
 class TicketView(discord.ui.View):

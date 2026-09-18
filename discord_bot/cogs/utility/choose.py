@@ -59,15 +59,6 @@ class Choose(commands.Cog):
         # Send the result.
         await ctx.reply(f"I'd go with: {'and'.join(choice)}")
 
-    @choose.error
-    async def choose_error(
-        self,
-        ctx: commands.Context[commands.Bot],
-        error: commands.CommandError,
-    ) -> None:
-        logger.error("❌ Something went wrong with choose command:", exc_info=error)
-        await ctx.reply("something went wrong with **choose**.")
-
     # choose slash command
     @app_commands.command(
         name="choose",
@@ -109,24 +100,6 @@ class Choose(commands.Cog):
 
         # Send the result.
         await interaction.response.send_message(f"I'd go with: {'and'.join(choice)}")
-
-    @slash_choose.error
-    async def slash_choose_error(
-        self,
-        interaction: discord.Interaction,
-        error: app_commands.AppCommandError,
-    ) -> None:
-        logger.error("❌ Something went wrong with /choose command:", exc_info=error)
-        try:
-            await interaction.response.send_message(
-                "Something went wrong with **choose**.",
-                ephemeral=True,
-            )
-        except discord.InteractionResponded:
-            await interaction.followup.send(
-                "Something went wrong with **choose**.",
-                ephemeral=True,
-            )
 
 
 async def setup(bot: commands.Bot) -> None:

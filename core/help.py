@@ -132,7 +132,7 @@ class HelpData:
         command: str | None = None,
         *,
         show_hidden: bool = False,
-    ) -> HelpData | None | dict[str, list[HelpData]]:
+    ) -> HelpData | dict[str, list[HelpData]] | None:
         """Get the help data of a command.
 
         Args:

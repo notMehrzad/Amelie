@@ -23,6 +23,7 @@ from discord.ext import commands, tasks
 from core import terminal
 from core.database import initialize_tables
 from core.log_handler import setup_logger
+from core.session import Session, get_session
 from discord_bot import cogs
 
 BOT = commands.Bot(
@@ -124,6 +125,17 @@ async def on_app_command_error(
     if interaction.command is None:
         return
 
+    # Close user's gambling session.
+    session = get_session(interaction.user.id, Session.SessionTypes.GAMBLING)
+    if session is not None:
+        session.close()
+
+    # Close user's messaging session.
+    session = get_session(interaction.user.id, Session.SessionTypes.MESSAGING)
+    if session is not None:
+        session.close()
+
+    # Log the error.
     logger.error(
         "❌ Something went wrong with %s slash command:",
         interaction.command.name,

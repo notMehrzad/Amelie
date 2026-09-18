@@ -140,15 +140,6 @@ class Help(commands.Cog):
                 else:
                     await HelpView(ctx, category_embeds=category_embeds).start()
 
-    @help_.error
-    async def help_error(
-        self,
-        ctx: commands.Context[commands.Bot],
-        error: commands.CommandError,
-    ) -> None:
-        logger.error("❌ Something went wrong with help command:", exc_info=error)
-        await ctx.reply("Something went wrong with **help**.")
-
     # help slash command
     @app_commands.command(name="help", description=HELP_HELP.brief)
     @app_commands.describe(
@@ -229,24 +220,6 @@ class Help(commands.Cog):
                         category_embeds=category_embeds,
                         hidden=hidden,
                     ).start()
-
-    @slash_help.error
-    async def slash_help_error(
-        self,
-        interaction: discord.Interaction,
-        error: app_commands.AppCommandError,
-    ) -> None:
-        logger.error("❌ Something went wrong with /help command:", exc_info=error)
-        if not interaction.response.is_done():
-            await interaction.response.send_message(
-                "Something went wrong with **help**.",
-                ephemeral=True,
-            )
-        else:
-            await interaction.followup.send(
-                "Something went wrong with **help**.",
-                ephemeral=True,
-            )
 
 
 @final

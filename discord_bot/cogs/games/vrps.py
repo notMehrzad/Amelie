@@ -82,13 +82,6 @@ class Vrps(commands.Cog):
         view = ReadyView(ctx, target) if target else VrpsView(ctx, ctx.me, botPlay=True)
         await view.start()
 
-    @vrps.error
-    async def vrps_error(
-        self, ctx: commands.Context[commands.Bot], error: commands.CommandError
-    ):
-        logger.exception(f"❌ something went wrong with vrps command:")
-        await ctx.reply("something went wrong with **vrps**.")
-
     # vrps slash command
     @app_commands.command(name="vrps", description=Help.brief, extras=Help.extras)
     @app_commands.describe(user="The user you want to play vrps with.")
@@ -140,18 +133,6 @@ class Vrps(commands.Cog):
             if isinstance(interaction.client.user, discord.abc.User):
                 view = VrpsView(interaction, interaction.client.user, botPlay=True)
                 await view.start()
-
-    @slashVrps.error
-    async def slashVrps_error(self, interaction: discord.Interaction, error: Exception):
-        logger.exception(f"❌ something went wrong with /vrps command:")
-        try:
-            await interaction.response.send_message(
-                "something went wrong with **vrps**.", ephemeral=True
-            )
-        except discord.InteractionResponded:
-            await interaction.followup.send(
-                "something went wrong with **vrps**.", ephemeral=True
-            )
 
 
 class ReadyView(discord.ui.View):

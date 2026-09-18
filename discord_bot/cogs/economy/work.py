@@ -1,4 +1,4 @@
-"""The `work` command. It is used to work and claim rewards."""
+"""work command. It is used to work and claim rewards."""
 
 import random
 from datetime import timedelta
@@ -133,13 +133,6 @@ class Work(commands.Cog):
         view = WorkView(ctx, account=account)
         await view.start()
 
-    @work.error
-    async def work_error(
-        self, ctx: commands.Context[commands.Bot], error: Exception
-    ) -> None:
-        logger.exception("❌ something went wrong with work command:")
-        await ctx.reply("something went wrong with **work**.")
-
     # work slash command
     @app_commands.command(name="work", description=Help.brief, extras=Help.extras)
     async def slashWork(
@@ -169,20 +162,6 @@ class Work(commands.Cog):
 
         view = WorkView(interaction, account=account)
         await view.start()
-
-    @slashWork.error
-    async def slashWork_error(
-        self, interaction: discord.Interaction, error: Exception
-    ) -> None:
-        logger.exception("❌ something went wrong with /work command:")
-        try:
-            await interaction.response.send_message(
-                "something went wrong with **work**.", ephemeral=True
-            )
-        except discord.InteractionResponded:
-            await interaction.followup.send(
-                "something went wrong with **work**.", ephemeral=True
-            )
 
 
 class WorkView(discord.ui.View):

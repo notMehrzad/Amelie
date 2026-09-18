@@ -11,9 +11,6 @@ from discord import app_commands
 from discord.ext import commands
 
 from core.help_data_constants import SAY_HELP
-from core.log_handler import setup_logger
-
-logger = setup_logger(__name__)
 
 
 @final
@@ -21,7 +18,7 @@ class Say(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
-    @commands.command(name="say", **SAY_HELP.kwargs)
+    @commands.command(name=SAY_HELP.name, **SAY_HELP.kwargs)
     async def say(
         self,
         ctx: commands.Context[commands.Bot],
@@ -77,18 +74,9 @@ class Say(commands.Cog):
         # Send the message.
         await target_channel.send(message)
 
-    @say.error
-    async def say_error(
-        self,
-        ctx: commands.Context[commands.Bot],
-        error: commands.CommandError,
-    ) -> None:
-        logger.error("❌ Something went wrong with say command:", exc_info=error)
-        await ctx.reply("something went wrong with **say**.")
-
     # say slash command
     @app_commands.command(
-        name="say",
+        name=SAY_HELP.name,
         description=SAY_HELP.brief,
         extras=SAY_HELP.extras,
     )
@@ -154,24 +142,6 @@ class Say(commands.Cog):
             await interaction.response.defer(ephemeral=True)
             await channel.send(message)
             await interaction.followup.send("Sent!")
-
-    @slash_say.error
-    async def slash_say_error(
-        self,
-        interaction: discord.Interaction,
-        error: app_commands.AppCommandError,
-    ) -> None:
-        logger.error("❌ Something went wrong with /say command:", exc_info=error)
-        try:
-            await interaction.response.send_message(
-                "Something went wrong with **say**.",
-                ephemeral=True,
-            )
-        except discord.InteractionResponded:
-            await interaction.followup.send(
-                "Something went wrong with **say**.",
-                ephemeral=True,
-            )
 
 
 async def setup(bot: commands.Bot) -> None:

@@ -69,15 +69,6 @@ class Daily(commands.Cog):
         )
         _ = await ctx.reply(embed=result_embed)
 
-    @daily.error
-    async def daily_error(
-        self,
-        ctx: commands.Context[commands.Bot],
-        error: commands.CommandError,
-    ) -> None:
-        logger.error("❌ Something went wrong with daily command:", exc_info=error)
-        _ = await ctx.reply("Something went wrong with **daily**.")
-
     # daily slash command
     @app_commands.command(
         name="daily",
@@ -125,24 +116,6 @@ class Daily(commands.Cog):
             timestamp=date,
         )
         _ = await interaction.response.send_message(embed=result_embed)
-
-    @slash_daily.error
-    async def slash_daily_error(
-        self,
-        interaction: discord.Interaction,
-        error: app_commands.AppCommandError,
-    ) -> None:
-        logger.error("❌ Something went wrong with /daily command:", exc_info=error)
-        try:
-            _ = await interaction.response.send_message(
-                "Ssomething went wrong with **daily**.",
-                ephemeral=True,
-            )
-        except discord.InteractionResponded:
-            await interaction.followup.send(
-                "Something went wrong with **daily**.",
-                ephemeral=True,
-            )
 
 
 async def setup(bot: commands.Bot) -> None:

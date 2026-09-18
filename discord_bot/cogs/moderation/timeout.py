@@ -177,17 +177,6 @@ class Timeout(commands.Cog):
             logger.exception(f".timeout failed to time out:")
             await ctx.reply("Failed to time out.")
 
-    @timeout.error
-    async def timeout_error(
-        self, ctx: commands.Context[commands.Bot], error: commands.CommandError
-    ):
-        # if user entered an invalid user
-        if isinstance(error, commands.BadArgument):
-            await ctx.reply("Member not found. Please mention a valid member.")
-        else:
-            logger.exception(f"❌ something went wrong with timeout command:")
-            await ctx.reply("something went wrong with **timeout**.")
-
     # timeout slash command
     @app_commands.command(name="timeout", description=Help.brief, extras=Help.extras)
     @app_commands.guild_only()
@@ -320,20 +309,6 @@ class Timeout(commands.Cog):
         except Exception:
             logger.exception(f".timeout failed to time out:")
             await interaction.response.send_message("Failed to time out.")
-
-    @slashTimeout.error
-    async def slashTimeout_error(
-        self, interaction: discord.Interaction, error: Exception
-    ):
-        logger.exception(f"❌ something went wrong with /timeout command:")
-        try:
-            await interaction.response.send_message(
-                "something went wrong with **timeout**.", ephemeral=True
-            )
-        except discord.InteractionResponded:
-            await interaction.followup.send(
-                "something went wrong with **timeout**.", ephemeral=True
-            )
 
     # سکوت 60
     @commands.Cog.listener()

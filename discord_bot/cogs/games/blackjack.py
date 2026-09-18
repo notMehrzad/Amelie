@@ -103,20 +103,6 @@ class Blackjack(commands.Cog):
         # Start Blackjack view.
         await BlackjackView(ctx, bet, bank_account, session).start()
 
-    @blackjack.error
-    async def blackjack_error(
-        self,
-        ctx: commands.Context[commands.Bot],
-        error: commands.CommandError,
-    ) -> None:
-        # Close user's gambling session if an error occurs.
-        session = get_session(ctx.author.id, Session.SessionTypes.GAMBLING)
-        if session:
-            _ = session.close()
-
-        logger.error("❌ Something went wrong with blackjack command.", exc_info=error)
-        _ = await ctx.reply("Something went wrong with **blackjack**.")
-
     # blackjack slash command
     @app_commands.command(
         name="blackjack",
@@ -187,29 +173,6 @@ class Blackjack(commands.Cog):
 
         # Start Blackjack view.
         await BlackjackView(interaction, bet, bank_account, session).start()
-
-    @slash_blackjack.error
-    async def slash_blackjack_error(
-        self,
-        interaction: discord.Interaction,
-        error: app_commands.AppCommandError,
-    ) -> None:
-        # Close user's gambling session if an error occurs.
-        session = get_session(interaction.user.id, Session.SessionTypes.GAMBLING)
-        if session:
-            _ = session.close()
-
-        logger.error("❌ Something went wrong with /blackjack command.", exc_info=error)
-        try:
-            _ = await interaction.response.send_message(
-                "Something went wrong with **blackjack**.",
-                ephemeral=True,
-            )
-        except discord.InteractionResponded:
-            await interaction.followup.send(
-                "Something went wrong with **blackjack**.",
-                ephemeral=True,
-            )
 
 
 @final

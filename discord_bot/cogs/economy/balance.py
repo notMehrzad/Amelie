@@ -38,15 +38,6 @@ class Balance(commands.Cog):
         )
         _ = await ctx.reply(embed=result_embed)
 
-    @balance.error
-    async def balance_error(
-        self,
-        ctx: commands.Context[commands.Bot],
-        error: commands.CommandError,
-    ) -> None:
-        logger.error("❌ Something went wrong with balance command:", exc_info=error)
-        _ = await ctx.reply("Something went wrong with **balance**.")
-
     # balance slash command
     @app_commands.command(
         name="balance",
@@ -76,24 +67,6 @@ class Balance(commands.Cog):
             embed=result_embed,
             ephemeral=hidden,
         )
-
-    @slash_balance.error
-    async def slash_balance_error(
-        self,
-        interaction: discord.Interaction,
-        error: app_commands.AppCommandError,
-    ) -> None:
-        logger.error("❌ Something went wrong with /balance command:", exc_info=error)
-        try:
-            _ = await interaction.response.send_message(
-                "Something went wrong with **balance**.",
-                ephemeral=True,
-            )
-        except discord.InteractionResponded:
-            await interaction.followup.send(
-                "Something went wrong with **balance**.",
-                ephemeral=True,
-            )
 
 
 async def setup(bot: commands.Bot) -> None:

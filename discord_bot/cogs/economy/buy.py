@@ -1,4 +1,4 @@
-"""The `buy` command. It allows the users to but different items from the itemshop."""
+"""buy command. It allows the users to but different items from the itemshop."""
 
 import discord
 from discord import app_commands
@@ -112,13 +112,6 @@ class Buy(commands.Cog):
 
         await ctx.reply(f"You have bought {quantity} {match.name} successfully.")
 
-    @buy.error
-    async def buy_error(
-        self, ctx: commands.Context[commands.Bot], error: commands.CommandError
-    ) -> None:
-        logger.exception("❌ something went wrong with buy command:")
-        await ctx.reply("something went wrong with **buy**.")
-
     # buy slash command
     @app_commands.command(name="buy", description=Help.brief, extras=Help.extras)
     @app_commands.describe(
@@ -206,20 +199,6 @@ class Buy(commands.Cog):
         await interaction.response.send_message(
             f"You have bought {quantity} {match.name} successfully."
         )
-
-    @slashBuy.error
-    async def slashBuy_error(
-        self, interaction: discord.Interaction, error: Exception
-    ) -> None:
-        logger.exception("❌ something went wrong with /buy command:")
-        try:
-            await interaction.response.send_message(
-                "something went wrong with **buy**.", ephemeral=True
-            )
-        except discord.InteractionResponded:
-            await interaction.followup.send(
-                "something went wrong with **buy**.", ephemeral=True
-            )
 
 
 async def setup(bot: commands.Bot) -> None:

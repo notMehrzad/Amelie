@@ -1,4 +1,4 @@
-"""The `lottery` command. allows users to sign up for the lottery."""
+"""lottery command. allows users to sign up for the lottery."""
 
 import discord
 from discord import app_commands
@@ -55,13 +55,6 @@ class Lottery(commands.Cog):
         )
         await ctx.reply("You have signed in for the Lottery successfully. Be tuned.")
 
-    @lottery.error
-    async def lottery_error(
-        self, ctx: commands.Context[commands.Bot], error: commands.CommandError
-    ) -> None:
-        logger.exception("❌ something went wrong with lottery command:")
-        await ctx.reply("something went wrong with **lottery**.")
-
     # lottery slash command
     @app_commands.command(name="lottery", description=Help.brief, extras=Help.extras)
     async def slashLottery(
@@ -92,20 +85,6 @@ class Lottery(commands.Cog):
         await interaction.response.send_message(
             "You have signed in for the Lottery successfully. Be tuned."
         )
-
-    @slashLottery.error
-    async def slashLottery_error(
-        self, interaction: discord.Interaction, error: Exception
-    ) -> None:
-        logger.exception("❌ something went wrong with /lottery command:")
-        try:
-            await interaction.response.send_message(
-                "something went wrong with **lottery**.", ephemeral=True
-            )
-        except discord.InteractionResponded:
-            await interaction.followup.send(
-                "something went wrong with **lottery**.", ephemeral=True
-            )
 
 
 async def setup(bot: commands.Bot) -> None:

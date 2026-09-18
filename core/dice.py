@@ -51,17 +51,17 @@ class DieSidesError(DiceError):
 class Dice:
     """Represents a dice."""
 
-    def __init__(self, side: int) -> None:
+    def __init__(self, sides: int = 6) -> None:
         """Initialize a dice.
 
         Args:
-            side (int): Number of sides the dice should have.
+            sides (int): Number of sides the dice should have. Defaults to 6.
 
         """
         # Raise an error if entered side is invalid.
-        if not (MIN_DIE_SIDES <= side <= MAX_DIE_SIDES):
+        if not (MIN_DIE_SIDES <= sides <= MAX_DIE_SIDES):
             raise DieSidesError
-        self.side: int = side
+        self.side: int = sides
 
     def roll(self, count: int = 1) -> tuple[int, list[int]]:
         """Roll dice.
