@@ -18,6 +18,7 @@ __all__ = [
     "ROLLDICE_HELP",
     "RPS_HELP",
     "SAY_HELP",
+    "TAROT_HELP",
     "TICKET_HELP",
     "WHISPER_HELP",
 ]
@@ -339,6 +340,21 @@ SAY_HELP = HelpData(
     brief="Says something in a channel.",
     usage='<target channel *or* "here"> <message>',
     aliases=["echo"],
+    is_hidden=False,
+)
+
+TAROT_HELP = HelpData(
+    is_enabled=True,
+    name="tarot",
+    category=HelpData.CommandCategory.UTILITY,
+    is_dm_only=False,
+    is_server_only=False,
+    subcommands=None,
+    permissions=None,
+    help_=None,
+    brief="Draw N cards from tarot deck.",
+    usage=None,
+    aliases=None,
     is_hidden=False,
 )
 
