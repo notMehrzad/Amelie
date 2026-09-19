@@ -10,7 +10,7 @@ from aiogram import Router
 from aiogram.filters import Command
 
 from core.help_data_constants import TAROT_HELP
-from core.tarot import MAX_DRAW_NUMBER, TarotCard
+from core.tarot import MAX_DRAW_NUMBER, draw_tarot_card
 from telegram_bot.arg_parser import parse_args
 
 if TYPE_CHECKING:
@@ -45,4 +45,4 @@ async def tarot(message: Message, number: int | str | None = 1) -> None:
         return
 
     # Draw the cards and send the result.
-    await message.reply(" | ".join(TarotCard.draw(number)))
+    await message.reply(" | ".join(str(card) for card in draw_tarot_card(number)))

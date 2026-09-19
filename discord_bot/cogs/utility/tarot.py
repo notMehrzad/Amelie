@@ -11,7 +11,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from core.help_data_constants import TAROT_HELP
-from core.tarot import MAX_DRAW_NUMBER, TarotCard
+from core.tarot import MAX_DRAW_NUMBER, draw_tarot_card
 
 
 @final
@@ -46,7 +46,7 @@ class Tarot(commands.Cog):
             return
 
         # Draw the cards and send the result.
-        await ctx.reply(" | ".join(TarotCard.draw(number)))
+        await ctx.reply(" | ".join(str(card) for card in draw_tarot_card(number)))
 
     # tarot slash command
     @app_commands.command(
@@ -85,7 +85,9 @@ class Tarot(commands.Cog):
             return
 
         # Draw the cards and send the result.
-        await interaction.response.send_message(" | ".join(TarotCard.draw(number)))
+        await interaction.response.send_message(
+            " | ".join(str(card) for card in draw_tarot_card(number)),
+        )
 
 
 async def setup(bot: commands.Bot) -> None:

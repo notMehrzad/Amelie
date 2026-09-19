@@ -1,14 +1,26 @@
+"""Tarot card deck definitions and drawing logic.
+
+Builds the full 78-card tarot deck (22 Major Arcana + 56 Minor Arcana across
+Swords, Wands, Cups, and Pentacles) as a flat list of formatted card strings,
+and exposes `TarotCard.draw()` to sample N unique cards from that deck.
+
+The deck is built once at import time as a side effect of instantiating
+`TarotCard` for every card; instances register themselves into the shared
+`TarotCard.cards` class-level list.
+"""
+
 from __future__ import annotations
 
-__all__ = ["MAX_DRAW_NUMBER", "TarotCard"]
+__all__ = ["MAX_DRAW_NUMBER", "TarotCard", "draw_tarot_card"]
 
 import random
+from dataclasses import dataclass
 from enum import Enum, auto
-from typing import ClassVar, final
+from typing import Final, final, override
 
 MAX_DRAW_NUMBER = 15
 
-MAJOR_ARCANAS = (
+_MAJOR_ARCANAS = (
     ("The Fool", "🪶"),
     ("The Magician", "🪄"),
     ("The High Priestess", "🌙"),
@@ -17,10 +29,10 @@ MAJOR_ARCANAS = (
     ("The Hierophant", "⛪"),
     ("The Lovers", "💞"),
     ("The Chariot", "🛡️"),
-    ("Justice", "⚖️"),
+    ("Strength", "🦁"),
     ("The Hermit", "🏮"),
     ("Wheel of Fortune", "🎡"),
-    ("Strength", "🦁"),
+    ("Justice", "⚖️"),
     ("The Hanged Man", "🪢"),
     ("Death", "☠️"),
     ("Temperance", "🏺"),
@@ -33,7 +45,7 @@ MAJOR_ARCANAS = (
     ("The World", "🌐"),
 )
 
-NUM_TO_WORD: dict[int, str] = {
+_NUM_TO_WORD: dict[int, str] = {
     1: "Ace",
     2: "two",
     3: "three",
@@ -58,7 +70,7 @@ class _Suits(Enum):
 
     @property
     def emoji(self) -> str:
-        """Return coresponding emoji of the suit."""
+        """Return corresponding emoji of the suit."""
         return {
             _Suits.SWORDS: "⚔️",
             _Suits.WANDS: "🪾",
@@ -78,7 +90,7 @@ class _CourtCards(Enum):
 
     @property
     def emoji(self) -> str:
-        """Return coresponding emoji of the court card."""
+        """Return corresponding emoji of the court card."""
         return {
             _CourtCards.PAGE: "🧑‍🎓",
             _CourtCards.KNIGHT: "🐎",
@@ -88,80 +100,86 @@ class _CourtCards(Enum):
 
 
 @final
+@dataclass(frozen=True, slots=True)
 class TarotCard:
-    """Represents all tarot cards."""
+    """Represents a tarot card."""
 
-    cards: ClassVar[list[str]] = []
+    number: int | None
+    title: str
+    emoji: str
 
-    def __init__(self, number: int | None, title: str, emoji: str) -> None:
-        """Initialize a tarot card.
-
-        Args:
-            number (int | None): Number of the card (court cards have no number).
-            title (str): Title of the card.
-            emoji (str): Emoji of the card.
-
-        Raises:
-            ValueError: Raise when entered number is invalid.
-
-        """
-        if number and number < 0:
+    def __post_init__(self) -> None:
+        """Raise an error if entered number is negative after initialization."""
+        if self.number is not None and self.number < 0:
             msg = "Tarot card number can not be negative."
             raise ValueError(msg)
-        self.number: int | None = number
-        self.title: str = title
-        self.emoji: str = emoji
 
-        TarotCard.cards.append(self.formatted)
-
-    @property
-    def formatted(self) -> str:
+    @override
+    def __str__(self) -> str:
         """Return formatted string of the card."""
         number_string = f"{self.number}" if self.number is not None else "-"
         return f"({number_string}) {self.title} {self.emoji}"
 
-    @classmethod
-    def draw(cls, number: int) -> list[str]:
-        """Draw N cards from the tarot deck.
 
-        Args:
-            number (int): Number of cards to draw.
+def _build_deck() -> list[TarotCard]:
+    """Construct the full 78-card tarot deck.
 
-        Returns:
-            list[str]: Return a list containing chosen cards.
+    Returns:
+        list[TarotCard]: Return the created deck.
 
-        """
-        if number < 0:
-            msg = "Draw number can not be negative."
-            raise ValueError(msg)
-        if number == 0:
-            msg = "Draw number can not be zero."
-            raise ValueError(msg)
-        if number > MAX_DRAW_NUMBER:
-            msg = f"Maximum draw number is {MAX_DRAW_NUMBER}."
-            raise ValueError(msg)
+    """
+    # Add major arcana cards to the deck.
+    deck = [
+        TarotCard(number=index, title=title, emoji=emoji)
+        for index, (title, emoji) in enumerate(_MAJOR_ARCANAS)
+    ]
 
-        return random.sample(TarotCard.cards, number)
+    # Add minor arcana cards to the deck.
+    for suit in _Suits:
+        # Add ace through ten cards.
+        deck += [
+            TarotCard(
+                number=number,
+                title=f"{_NUM_TO_WORD[number]} of {suit.name.title()}",
+                emoji=suit.emoji,
+            )
+            for number in range(1, 11)
+        ]
+
+        # Add court cards.
+        deck += [
+            TarotCard(
+                number=None,
+                title=f"{court.name.title()} of {suit.name.title()}",
+                emoji=f"{court.emoji}{suit.emoji}",
+            )
+            for court in _CourtCards
+        ]
+
+    return deck
 
 
-# Add major arcana cards to the deck.
-for index, (title, emoji) in enumerate(MAJOR_ARCANAS):
-    TarotCard(index, title, emoji)
+_DECK: Final[list[TarotCard]] = _build_deck()
 
-# Add minor arcana cards to the deck.
-for suit in _Suits:
-    # Ace through ten
-    for number in range(1, 11):
-        TarotCard(
-            number=number,
-            title=f"{NUM_TO_WORD[number]} of {suit.name.title()}",
-            emoji=suit.emoji,
-        )
 
-    # Court cards
-    for court in _CourtCards:
-        TarotCard(
-            number=None,
-            title=f"{court.name.title()} of {suit.name.title()}",
-            emoji=f"{court.emoji}{suit.emoji}",
-        )
+def draw_tarot_card(count: int = 1) -> list[TarotCard]:
+    """Draw N cards from the tarot deck.
+
+    Args:
+        count (int): Number of cards to draw.
+
+    Returns:
+        list[TarotCard]: Return a list containing chosen cards.
+
+    """
+    # Raise an error if entered draw number is zero or negative.
+    if count <= 0:
+        msg = "Draw number must be positive."
+        raise ValueError(msg)
+
+    # Raise an error if entered draw number is greater than maximum allowed draw number.
+    if count > MAX_DRAW_NUMBER:
+        msg = f"Maximum draw number is {MAX_DRAW_NUMBER}."
+        raise ValueError(msg)
+
+    return random.sample(_DECK, count)
